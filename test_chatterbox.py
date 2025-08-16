@@ -3,6 +3,7 @@
 Test script for Chatterbox TTS integration
 """
 
+import torch
 import torchaudio as ta
 from chatterbox.tts import ChatterboxTTS
 
