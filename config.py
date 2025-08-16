@@ -81,6 +81,23 @@ WEBSOCKET_CONFIG = {
     
     # CORS headers
     "cors_headers": ["*"],
+    
+    # Bidirectional streaming settings
+    "bidirectional_streaming": {
+        "enabled": True,  # Enable concurrent send/receive
+        "max_concurrent_tasks": 10,  # Max concurrent audio generation tasks per connection
+        "task_timeout": 30,  # Timeout for audio generation tasks
+        "immediate_send": True,  # Send audio immediately when generated
+        "queue_size": 100,  # Size of audio queue per connection
+    },
+    
+    # Latency optimization
+    "latency_optimization": {
+        "min_text_length": 5,  # Reduced from 10 for faster response
+        "chunk_size": 25,  # Smaller chunks for lower latency
+        "preemptive_generation": True,  # Start generating audio before full text
+        "streaming_threshold": 0.1,  # Start streaming after 100ms of silence
+    }
 }
 
 # Server Configuration

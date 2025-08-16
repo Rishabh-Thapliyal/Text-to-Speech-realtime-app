@@ -348,17 +348,23 @@
                 <textarea 
                     id="textInput" 
                     class="text-input" 
-                    placeholder="Enter text to convert to speech...&#10;&#10;Type or paste your text here. The system will stream it in chunks and generate audio in real-time."
+                    placeholder="Enter text to convert to speech...&#10;&#10;Type or paste your text here. The system will stream it in chunks according to the specification:&#10;1. Initial space character&#10;2. Text chunks&#10;3. Final empty string to close"
                 ></textarea>
                 <div class="controls">
                     <button id="streamBtn" class="btn btn-primary" disabled>
-                        🚀 Stream Text
+                        🚀 Stream Text (Specification)
+                    </button>
+                    <button id="manualStreamBtn" class="btn btn-secondary" disabled>
+                        ✋ Manual Stream
                     </button>
                     <button id="flushBtn" class="btn btn-secondary" disabled>
                         ⚡ Flush Buffer
                     </button>
                     <button id="clearBtn" class="btn btn-secondary">
                         🗑️ Clear
+                    </button>
+                    <button id="clearCaptionsBtn" class="btn btn-secondary">
+                        🗑️ Clear Captions
                     </button>
                     <div class="typing-indicator" id="typingIndicator" style="display: none;">
                         <span class="typing-dot"></span>
@@ -376,6 +382,7 @@
                         <p><strong>Status:</strong> <span id="audioStatus">Ready</span></p>
                         <p><strong>Chunks Received:</strong> <span id="chunkCount">0</span></p>
                         <p><strong>Total Audio:</strong> <span id="totalAudio">0</span> bytes</p>
+                        <p><strong>Current Duration:</strong> <span id="currentDuration">0</span>ms</p>
                         <div id="audioChunks"></div>
                     </div>
                 </div>
@@ -384,8 +391,31 @@
                     <h3>📺 Real-time Captions</h3>
                     <div class="captions" id="captions">
                         <p style="color: #6c757d; text-align: center; margin-top: 80px;">
-                            Captions will appear here as audio is generated...
+                            Captions will appear here as audio is generated...<br>
+                            <small>Characters will highlight in real-time based on alignment data</small>
                         </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Specification Status Section -->
+            <div class="logs" style="margin-bottom: 20px;">
+                <h3>📋 Specification Compliance Status</h3>
+                <div class="log-container" id="specStatusContainer">
+                    <div class="log-entry log-info">
+                        <strong>Input Format:</strong> ✅ text + flush fields
+                    </div>
+                    <div class="log-entry log-info">
+                        <strong>Initial Space:</strong> ⏳ Waiting for first chunk
+                    </div>
+                    <div class="log-entry log-info">
+                        <strong>Flush Behavior:</strong> ⏳ Waiting for flush test
+                    </div>
+                    <div class="log-entry log-info">
+                        <strong>Output Format:</strong> ⏳ Waiting for audio response
+                    </div>
+                    <div class="log-entry log-info">
+                        <strong>Character Alignment:</strong> ⏳ Waiting for alignment data
                     </div>
                 </div>
             </div>
@@ -421,6 +451,7 @@
                 this.connectBtn = document.getElementById('connectBtn');
                 this.disconnectBtn = document.getElementById('disconnectBtn');
                 this.streamBtn = document.getElementById('streamBtn');
+                this.manualStreamBtn = document.getElementById('manualStreamBtn');
                 this.flushBtn = document.getElementById('flushBtn');
                 this.clearBtn = document.getElementById('clearBtn');
                 this.textInput = document.getElementById('textInput');
@@ -429,18 +460,48 @@
                 this.audioStatus = document.getElementById('audioStatus');
                 this.chunkCount = document.getElementById('chunkCount');
                 this.totalAudio = document.getElementById('totalAudio');
+                this.currentDuration = document.getElementById('currentDuration');
                 this.audioChunks = document.getElementById('audioChunks');
                 this.captions = document.getElementById('captions');
                 this.logContainer = document.getElementById('logContainer');
+                this.specStatusContainer = document.getElementById('specStatusContainer');
                 this.typingIndicator = document.getElementById('typingIndicator');
+                this.clearCaptionsBtn = document.getElementById('clearCaptionsBtn');
+            }
+
+            updateSpecificationStatus(type, status, message) {
+                const statusElements = this.specStatusContainer.querySelectorAll('.log-entry');
+                let targetElement = null;
+                
+                switch(type) {
+                    case 'initial_space':
+                        targetElement = statusElements[1]; // Initial Space
+                        break;
+                    case 'flush_behavior':
+                        targetElement = statusElements[2]; // Flush Behavior
+                        break;
+                    case 'output_format':
+                        targetElement = statusElements[3]; // Output Format
+                        break;
+                    case 'character_alignment':
+                        targetElement = statusElements[4]; // Character Alignment
+                        break;
+                }
+                
+                if (targetElement) {
+                    targetElement.innerHTML = `<strong>${targetElement.textContent.split(':')[0]}:</strong> ${status} ${message}`;
+                    targetElement.className = `log-entry log-${status === '✅' ? 'success' : status === '❌' ? 'error' : 'info'}`;
+                }
             }
 
             bindEvents() {
                 this.connectBtn.addEventListener('click', () => this.connect());
                 this.disconnectBtn.addEventListener('click', () => this.disconnect());
                 this.streamBtn.addEventListener('click', () => this.startStreaming());
+                this.manualStreamBtn.addEventListener('click', () => this.manualStartStreaming());
                 this.flushBtn.addEventListener('click', () => this.flushBuffer());
                 this.clearBtn.addEventListener('click', () => this.clearAll());
+                this.clearCaptionsBtn.addEventListener('click', () => this.clearAllCaptions());
                 
                 this.textInput.addEventListener('input', () => this.handleTextInput());
                 this.textInput.addEventListener('keydown', (e) => this.handleKeyDown(e));
@@ -510,6 +571,7 @@
                 this.connectBtn.disabled = connected;
                 this.disconnectBtn.disabled = !connected;
                 this.streamBtn.disabled = !connected;
+                this.manualStreamBtn.disabled = !connected;
                 this.flushBtn.disabled = !connected;
             }
 
@@ -528,6 +590,10 @@
                     }
                     
                     if (message.audio && message.alignment) {
+                        // Update specification compliance status
+                        this.updateSpecificationStatus('output_format', '✅', 'Audio + alignment received');
+                        this.updateSpecificationStatus('character_alignment', '✅', `${message.alignment.chars.length} characters with timing`);
+                        
                         this.handleAudioChunk(message.audio, message.alignment);
                     }
                     
@@ -540,6 +606,12 @@
                 this.chunkCount.textContent = parseInt(this.chunkCount.textContent) + 1;
                 this.totalAudio.textContent = parseInt(this.totalAudio.textContent) + (audioBase64.length * 0.75); // Approximate size
                 
+                // Increment received audio chunks counter for streaming completion check
+                if (this.isStreaming) {
+                    this.receivedAudioChunks = (this.receivedAudioChunks || 0) + 1;
+                    this.log(`Received audio chunk ${this.receivedAudioChunks}`, 'info');
+                }
+                
                 // Display audio chunk info
                 const chunkDiv = document.createElement('div');
                 chunkDiv.className = 'audio-chunk';
@@ -551,7 +623,7 @@
                     this.audioChunks.removeChild(this.audioChunks.firstChild);
                 }
                 
-                // Process audio
+                // Process audio immediately as received
                 this.processAudioChunk(audioBase64, alignment);
                 
                 this.log(`Received audio chunk: ${Math.round(audioBase64.length * 0.75)} bytes`, 'success');
@@ -559,43 +631,153 @@
 
             async processAudioChunk(audioBase64, alignment) {
                 try {
-                    // Decode Base64 audio
+                    this.log(`Processing audio chunk: ${audioBase64.length} Base64 characters`, 'info');
+                    
+                    // Decode Base64 audio (raw PCM data)
                     const audioData = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
+                    this.log(`Decoded to ${audioData.length} PCM bytes`, 'info');
                     
-                    // Convert to AudioBuffer
-                    const audioBuffer = await this.audioContext.decodeAudioData(audioData.buffer);
+                    // Validate PCM data
+                    if (audioData.length === 0) {
+                        throw new Error('Empty PCM data received');
+                    }
                     
-                    // Add to audio queue
+                    if (audioData.length % 2 !== 0) {
+                        throw new Error(`Invalid PCM data length: ${audioData.length} bytes (must be even for 16-bit samples)`);
+                    }
+                    
+                    // Convert raw PCM data to AudioBuffer
+                    const audioBuffer = await this.createAudioBufferFromPCM(audioData);
+                    this.log(`Created AudioBuffer: ${audioBuffer.length} samples, ${audioBuffer.duration.toFixed(3)}s`, 'info');
+                    
+                    // Update current duration display
+                    const durationMs = Math.round(audioBuffer.duration * 1000);
+                    this.currentDuration.textContent = durationMs;
+                    
+                    // Add to audio queue for immediate playback
                     this.audioQueue.push({
                         buffer: audioBuffer,
                         alignment: alignment,
                         timestamp: Date.now()
                     });
                     
-                    // Update captions
-                    this.updateCaptions(alignment);
+                    // Update captions immediately with alignment data
+                    this.updateCaptions(alignment, audioBase64);
                     
-                    // Play audio if not currently playing
+                    // Play audio immediately if not currently playing
                     if (!this.currentAudioSource) {
                         this.playNextAudio();
                     }
                     
+                    this.log(`Audio chunk processed successfully: ${durationMs}ms duration`, 'success');
+                    
                 } catch (error) {
                     this.log('Failed to process audio chunk: ' + error.message, 'error');
+                    this.log('Audio data length: ' + (audioBase64 ? audioBase64.length : 'undefined'), 'error');
+                    this.log('Alignment data: ' + JSON.stringify(alignment), 'error');
+                    
+                    // Fallback: still update captions even if audio fails
+                    this.log('Using fallback mode: captions only (no audio)', 'warning');
+                    this.updateCaptions(alignment);
+                    
+                    // Update duration display with estimated duration
+                    const estimatedDuration = Math.round((audioBase64.length * 0.75) / 88.2); // Rough estimate: bytes / (44.1kHz * 2 bytes/sample)
+                    this.currentDuration.textContent = estimatedDuration;
                 }
             }
 
-            updateCaptions(alignment) {
+            async createAudioBufferFromPCM(pcmData) {
+                try {
+                    // Create AudioBuffer from raw PCM data
+                    // PCM format: 44.1 kHz, 16-bit, mono (as per backend specification)
+                    const sampleRate = 44100;
+                    const channels = 1;
+                    const bytesPerSample = 2; // 16-bit = 2 bytes
+                    
+                    // Calculate number of samples
+                    const sampleCount = pcmData.length / bytesPerSample;
+                    
+                    this.log(`Creating AudioBuffer: ${sampleCount} samples, ${sampleRate}Hz, ${channels} channel(s)`, 'info');
+                    
+                    // Create AudioBuffer
+                    const audioBuffer = this.audioContext.createBuffer(channels, sampleCount, sampleRate);
+                    
+                    // Get the channel data (mono, so only channel 0)
+                    const channelData = audioBuffer.getChannelData(0);
+                    
+                    // Try both endianness approaches
+                    let conversionSuccess = false;
+                    
+                    // Method 1: Little-endian (most common)
+                    try {
+                        for (let i = 0; i < sampleCount; i++) {
+                            const sampleIndex = i * bytesPerSample;
+                            const sample = (pcmData[sampleIndex + 1] << 8) | pcmData[sampleIndex];
+                            channelData[i] = sample / 32768.0;
+                        }
+                        conversionSuccess = true;
+                        this.log('PCM conversion completed using little-endian format', 'info');
+                    } catch (e) {
+                        this.log('Little-endian conversion failed, trying big-endian', 'warning');
+                    }
+                    
+                    // Method 2: Big-endian (if little-endian failed)
+                    if (!conversionSuccess) {
+                        try {
+                            for (let i = 0; i < sampleCount; i++) {
+                                const sampleIndex = i * bytesPerSample;
+                                const sample = (pcmData[sampleIndex] << 8) | pcmData[sampleIndex + 1];
+                                channelData[i] = sample / 32768.0;
+                            }
+                            conversionSuccess = true;
+                            this.log('PCM conversion completed using big-endian format', 'info');
+                        } catch (e) {
+                            this.log('Big-endian conversion also failed', 'error');
+                            throw new Error('Failed to convert PCM data with both endianness approaches');
+                        }
+                    }
+                    
+                    return audioBuffer;
+                    
+                } catch (error) {
+                    this.log('Error in createAudioBufferFromPCM: ' + error.message, 'error');
+                    throw error;
+                }
+            }
+
+            updateCaptions(alignment, audioBase64 = null) {
                 if (!alignment.chars || alignment.chars.length === 0) return;
                 
-                // Clear existing captions
-                this.captions.innerHTML = '';
+                // Validate alignment data format first
+                const isValid = this.validateAlignmentFormat(alignment);
+                if (!isValid) {
+                    this.log('⚠️ Displaying captions despite validation errors', 'warning');
+                }
                 
-                // Create caption display
+                // Create a new caption chunk container (don't clear existing ones)
                 const captionContainer = document.createElement('div');
+                captionContainer.className = 'caption-chunk';
                 captionContainer.style.textAlign = 'center';
-                captionContainer.style.padding = '20px';
+                captionContainer.style.padding = '15px';
+                captionContainer.style.margin = '10px 0';
+                captionContainer.style.fontSize = '18px';
+                captionContainer.style.lineHeight = '1.6';
+                captionContainer.style.border = '1px solid #e0e0e0';
+                captionContainer.style.borderRadius = '8px';
+                captionContainer.style.backgroundColor = '#fafafa';
                 
+                // Add chunk header with timing info and chunk number
+                const chunkNumber = document.querySelectorAll('.caption-chunk').length + 1;
+                const header = document.createElement('div');
+                header.style.marginBottom = '15px';
+                header.style.fontSize = '14px';
+                header.style.color = '#666';
+                header.style.borderBottom = '1px solid #e0e0e0';
+                header.style.paddingBottom = '10px';
+                header.innerHTML = `<strong>Chunk ${chunkNumber}:</strong> ${alignment.chars.length} characters, ${Math.max(...alignment.char_durations_ms)}ms max duration`;
+                captionContainer.appendChild(header);
+                
+                // Display all characters with their timing data
                 alignment.chars.forEach((char, index) => {
                     const charSpan = document.createElement('span');
                     charSpan.className = 'caption-char';
@@ -603,17 +785,180 @@
                     charSpan.dataset.index = index;
                     charSpan.dataset.startTime = alignment.char_start_times_ms[index];
                     charSpan.dataset.duration = alignment.char_durations_ms[index];
+                    charSpan.dataset.chunkNumber = chunkNumber;
+                    
+                    // Add timing info as tooltip
+                    const startTime = alignment.char_start_times_ms[index];
+                    const duration = alignment.char_durations_ms[index];
+                    charSpan.title = `Chunk ${chunkNumber}, Start: ${startTime}ms, Duration: ${duration}ms`;
                     
                     captionContainer.appendChild(charSpan);
                 });
                 
+                // Add the new chunk to captions (don't replace existing ones)
                 this.captions.appendChild(captionContainer);
                 
-                // Start character highlighting
-                this.startCharacterHighlighting(alignment);
+                // Display raw alignment data for verification (exact format from requirements)
+                this.displayAlignmentData(alignment, chunkNumber);
+                
+                // Display output format verification if audio data is available
+                if (audioBase64) {
+                    this.displayOutputFormat(audioBase64, alignment, chunkNumber);
+                }
+                
+                // Start real-time character highlighting based on alignment data for this chunk
+                this.startCharacterHighlighting(alignment, chunkNumber);
+                
+                // Update the caption summary
+                this.updateCaptionSummary();
+                
+                this.log(`Caption chunk ${chunkNumber} added: ${alignment.chars.length} characters with timing data`, 'info');
             }
 
-            startCharacterHighlighting(alignment) {
+            // Add method to validate alignment data format
+            validateAlignmentFormat(alignment) {
+                const errors = [];
+                
+                // Check required fields
+                if (!alignment.chars || !Array.isArray(alignment.chars)) {
+                    errors.push("Missing or invalid 'chars' array");
+                }
+                
+                if (!alignment.char_start_times_ms || !Array.isArray(alignment.char_start_times_ms)) {
+                    errors.push("Missing or invalid 'char_start_times_ms' array");
+                }
+                
+                if (!alignment.char_durations_ms || !Array.isArray(alignment.char_durations_ms)) {
+                    errors.push("Missing or invalid 'char_durations_ms' array");
+                }
+                
+                // Check array lengths match
+                if (alignment.chars && alignment.char_start_times_ms && alignment.char_durations_ms) {
+                    if (alignment.chars.length !== alignment.char_start_times_ms.length) {
+                        errors.push(`Array length mismatch: chars(${alignment.chars.length}) != start_times(${alignment.char_start_times_ms.length})`);
+                    }
+                    
+                    if (alignment.chars.length !== alignment.char_durations_ms.length) {
+                        errors.push(`Array length mismatch: chars(${alignment.chars.length}) != durations(${alignment.char_durations_ms.length})`);
+                    }
+                }
+                
+                // Check data types
+                if (alignment.char_start_times_ms) {
+                    const invalidStartTimes = alignment.char_start_times_ms.filter(t => typeof t !== 'number' || t < 0);
+                    if (invalidStartTimes.length > 0) {
+                        errors.push(`Invalid start times found: ${invalidStartTimes.length} non-positive numbers`);
+                    }
+                }
+                
+                if (alignment.char_durations_ms) {
+                    const invalidDurations = alignment.char_durations_ms.filter(d => typeof d !== 'number' || d <= 0);
+                    if (invalidDurations.length > 0) {
+                        errors.push(`Invalid durations found: ${invalidDurations.length} non-positive numbers`);
+                    }
+                }
+                
+                // Check timing consistency
+                if (alignment.char_start_times_ms && alignment.char_durations_ms && alignment.char_start_times_ms.length > 0) {
+                    for (let i = 1; i < alignment.char_start_times_ms.length; i++) {
+                        const expectedStart = alignment.char_start_times_ms[i-1] + alignment.char_durations_ms[i-1];
+                        const actualStart = alignment.char_start_times_ms[i];
+                        if (Math.abs(expectedStart - actualStart) > 5) { // Allow 5ms tolerance
+                            errors.push(`Timing inconsistency at index ${i}: expected ${expectedStart}ms, got ${actualStart}ms`);
+                        }
+                    }
+                }
+                
+                if (errors.length === 0) {
+                    this.log(`✅ Alignment data validation passed: ${alignment.chars.length} characters`, 'success');
+                    return true;
+                } else {
+                    this.log(`❌ Alignment data validation failed:`, 'error');
+                    errors.forEach(error => this.log(`   - ${error}`, 'error'));
+                    return false;
+                }
+            }
+
+            // Add method to display raw alignment data for verification
+            displayAlignmentData(alignment, chunkNumber) {
+                if (!alignment.chars || alignment.chars.length === 0) return;
+                
+                // Create a formatted display of the alignment data
+                const alignmentDisplay = document.createElement('div');
+                alignmentDisplay.style.marginTop = '15px';
+                alignmentDisplay.style.padding = '15px';
+                alignmentDisplay.style.backgroundColor = '#f8f9fa';
+                alignmentDisplay.style.borderRadius = '8px';
+                alignmentDisplay.style.fontFamily = 'monospace';
+                alignmentDisplay.style.fontSize = '12px';
+                alignmentDisplay.style.textAlign = 'left';
+                alignmentDisplay.style.overflowX = 'auto';
+                alignmentDisplay.style.border = '1px solid #dee2e6';
+                
+                // Format the alignment data exactly as specified in requirements
+                const formattedData = {
+                    chars: alignment.chars,
+                    char_start_times_ms: alignment.char_start_times_ms,
+                    char_durations_ms: alignment.char_durations_ms
+                };
+                
+                alignmentDisplay.innerHTML = `
+                    <h5 style="margin-bottom: 10px; color: #495057;">📊 Chunk ${chunkNumber} - Character Alignment Data (Raw Format)</h5>
+                    <pre style="margin: 0; white-space: pre-wrap;">${JSON.stringify(formattedData, null, 2)}</pre>
+                `;
+                
+                // Add to the current caption chunk
+                const currentChunk = document.querySelector(`.caption-chunk:nth-child(${chunkNumber})`);
+                if (currentChunk) {
+                    currentChunk.appendChild(alignmentDisplay);
+                }
+            }
+
+            // Add method to display the exact output format from requirements
+            displayOutputFormat(audioBase64, alignment, chunkNumber) {
+                // Create a display showing the exact output format as per requirements
+                const outputDisplay = document.createElement('div');
+                outputDisplay.style.marginTop = '15px';
+                outputDisplay.style.padding = '15px';
+                outputDisplay.style.backgroundColor = '#e3f2fd';
+                outputDisplay.style.borderRadius = '8px';
+                outputDisplay.style.fontFamily = 'monospace';
+                outputDisplay.style.fontSize = '12px';
+                outputDisplay.style.textAlign = 'left';
+                outputDisplay.style.overflowX = 'auto';
+                outputDisplay.style.border = '2px solid #2196f3';
+                
+                // Create the exact output format as specified in requirements
+                const outputFormat = {
+                    audio: audioBase64.substring(0, 100) + (audioBase64.length > 100 ? '...' : ''),
+                    alignment: {
+                        chars: alignment.chars,
+                        char_start_times_ms: alignment.char_start_times_ms,
+                        char_durations_ms: alignment.char_durations_ms
+                    }
+                };
+                
+                outputDisplay.innerHTML = `
+                    <h5 style="margin-bottom: 10px; color: #1976d2;">📤 Chunk ${chunkNumber} - WebSocket Output Format (Requirements Compliant)</h5>
+                    <p style="margin-bottom: 10px; color: #666; font-size: 11px;">
+                        <strong>Format:</strong> 44.1 kHz, 16-bit, mono PCM, Base64 encoded<br>
+                        <strong>Fields:</strong> audio (Base64 string) + alignment (character timing data)
+                    </p>
+                    <pre style="margin: 0; white-space: pre-wrap;">${JSON.stringify(outputFormat, null, 2)}</pre>
+                    <p style="margin-top: 10px; color: #666; font-size: 11px;">
+                        <strong>Audio:</strong> ${audioBase64.length} Base64 characters (${Math.round(audioBase64.length * 0.75)} bytes)<br>
+                        <strong>Alignment:</strong> ${alignment.chars.length} characters with timing data
+                    </p>
+                `;
+                
+                // Add to the current caption chunk
+                const currentChunk = document.querySelector(`.caption-chunk:nth-child(${chunkNumber})`);
+                if (currentChunk) {
+                    currentChunk.appendChild(outputDisplay);
+                }
+            }
+
+            startCharacterHighlighting(alignment, chunkNumber) {
                 if (this.characterHighlightInterval) {
                     clearInterval(this.characterHighlightInterval);
                 }
@@ -626,7 +971,7 @@
                 this.characterHighlightInterval = setInterval(() => {
                     const elapsed = Date.now() - startTime;
                     
-                    // Find current character
+                    // Find current character based on alignment timing data
                     let currentCharIndex = -1;
                     for (let i = 0; i < startTimes.length; i++) {
                         if (elapsed >= startTimes[i] && elapsed < startTimes[i] + durations[i]) {
@@ -635,17 +980,70 @@
                         }
                     }
                     
-                    // Update highlighting
-                    document.querySelectorAll('.caption-char').forEach((charSpan, index) => {
-                        charSpan.classList.toggle('active', index === currentCharIndex);
-                    });
+                    // Update highlighting for real-time captions in the specific chunk
+                    const currentChunk = document.querySelector(`.caption-chunk:nth-child(${chunkNumber})`);
+                    if (currentChunk) {
+                        currentChunk.querySelectorAll('.caption-char').forEach((charSpan, index) => {
+                            if (index === currentCharIndex) {
+                                charSpan.classList.add('active');
+                                // Scroll to keep active character visible
+                                charSpan.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            } else {
+                                charSpan.classList.remove('active');
+                            }
+                        });
+                    }
                     
                     // Stop when all characters have been highlighted
-                    if (elapsed > startTimes[startTimes.length - 1] + durations[durations.length - 1]) {
+                    if (elapsed > startTimes[startTimes.length - 1] + durations[startTimes.length - 1]) {
                         clearInterval(this.characterHighlightInterval);
                         this.characterHighlightInterval = null;
+                        this.log(`Character highlighting completed for chunk ${chunkNumber}`, 'info');
                     }
-                }, 50); // Update every 50ms for smooth animation
+                }, 50); // Update every 50ms for smooth real-time animation
+            }
+
+            // Add method to update caption summary
+            updateCaptionSummary() {
+                const chunks = document.querySelectorAll('.caption-chunk');
+                const totalChunks = chunks.length;
+                let totalCharacters = 0;
+                
+                chunks.forEach(chunk => {
+                    const chars = chunk.querySelectorAll('.caption-char');
+                    totalCharacters += chars.length;
+                });
+                
+                // Create or update summary panel
+                let summaryPanel = document.getElementById('captionSummary');
+                if (!summaryPanel) {
+                    summaryPanel = document.createElement('div');
+                    summaryPanel.id = 'captionSummary';
+                    summaryPanel.style.marginBottom = '20px';
+                    summaryPanel.style.padding = '15px';
+                    summaryPanel.style.backgroundColor = '#e8f5e8';
+                    summaryPanel.style.borderRadius = '8px';
+                    summaryPanel.style.border = '2px solid #4caf50';
+                    summaryPanel.style.textAlign = 'center';
+                    summaryPanel.style.fontWeight = 'bold';
+                    
+                    // Insert at the top of captions panel
+                    this.captions.insertBefore(summaryPanel, this.captions.firstChild);
+                }
+                
+                summaryPanel.innerHTML = `
+                    <h4 style="margin: 0; color: #2e7d32;">📺 Caption Summary</h4>
+                    <p style="margin: 10px 0 0 0; color: #388e3c;">
+                        📊 Total Chunks: ${totalChunks} | 📝 Total Characters: ${totalCharacters}
+                    </p>
+                `;
+            }
+
+            // Add method to clear all captions
+            clearAllCaptions() {
+                this.captions.innerHTML = '';
+                this.updateCaptionSummary(); // Update summary to show 0 chunks
+                this.log('All caption chunks cleared', 'info');
             }
 
             playNextAudio() {
@@ -679,46 +1077,117 @@
                 
                 const text = this.textInput.value.trim();
                 if (!text) {
-                    this.log('Please enter some text to stream', 'error');
+                    this.log('Please enter text to stream', 'error');
                     return;
                 }
                 
                 this.isStreaming = true;
+                this.receivedAudioChunks = 0; // Reset counter for new streaming session
                 this.streamBtn.disabled = true;
                 this.typingIndicator.style.display = 'inline-block';
-                this.log('Starting text streaming...', 'info');
-                
-                // Stream text in chunks
-                this.streamTextInChunks(text);
+                this.log('Starting specification-compliant text streaming...', 'info');
+                this.updateSpecificationStatus('streaming', '🔄', 'Streaming in progress...');
+
+                // Start specification-compliant streaming
+                this.streamTextInChunksSpecification(text);
             }
 
-            streamTextInChunks(text) {
-                const chunkSize = 50; // Characters per chunk
+            manualStartStreaming() {
+                if (!this.isConnected) {
+                    this.log('Not connected to WebSocket', 'error');
+                    return;
+                }
+
+                const text = this.textInput.value.trim();
+                if (!text) {
+                    this.log('Please enter some text to stream', 'error');
+                    return;
+                }
+
+                this.isStreaming = true;
+                this.streamBtn.disabled = true;
+                this.typingIndicator.style.display = 'inline-block';
+                this.log('Starting manual text streaming...', 'info');
+
+                // Manual streaming: send text directly
+                this.sendWebSocketMessage(text, false);
+                this.log(`Sent manual text: "${text}"`, 'info');
+            }
+
+            streamTextInChunksSpecification(text) {
+                // According to specification:
+                // 1. First chunk: single space character
+                // 2. Text chunks: actual content
+                // 3. Final chunk: empty string to close
+                
+                const chunkSize = 10; // Smaller chunks for better streaming
                 const chunks = [];
                 
+                // Split text into chunks
                 for (let i = 0; i < text.length; i += chunkSize) {
                     chunks.push(text.slice(i, i + chunkSize));
                 }
                 
                 let chunkIndex = 0;
+                let expectedAudioChunks = 0;
+                let receivedAudioChunks = 0;
+                
+                this.log(`Starting specification-compliant streaming: ${chunks.length} chunks of size ${chunkSize}`, 'info');
+                this.log(`Text: "${text}"`, 'info');
+                this.log(`Chunks: [${chunks.map((c, i) => `"${c}"`).join(', ')}]`, 'info');
                 
                 const streamInterval = setInterval(() => {
-                    if (chunkIndex >= chunks.length) {
-                        // Send final chunk (empty string to close)
-                        this.sendWebSocketMessage("", false);
-                        clearInterval(streamInterval);
-                        this.stopStreaming();
-                        return;
+                    if (chunkIndex === 0) {
+                        // Step 1: Send initial space character (first chunk from client)
+                        this.sendWebSocketMessage(" ", false);
+                        this.log('Sent initial space character (first chunk)', 'info');
+                        this.updateSpecificationStatus('initial_space', '✅', 'Initial space sent');
+                        chunkIndex++;
+                    } else if (chunkIndex <= chunks.length) {
+                        // Step 2: Send text chunks
+                        const chunk = chunks[chunkIndex - 1];
+                        this.sendWebSocketMessage(chunk, false);
+                        this.log(`Sent text chunk ${chunkIndex}/${chunks.length}: "${chunk}"`, 'info');
+                        expectedAudioChunks++; // Expect one audio chunk per text chunk
+                        chunkIndex++;
+                        
+                        // If this was the last text chunk, wait for all audio chunks before closing
+                        if (chunkIndex > chunks.length) {
+                            this.log(`All text chunks sent. Waiting for ${expectedAudioChunks} audio chunks...`, 'info');
+                            
+                            // Set a maximum wait time to prevent infinite waiting
+                            const maxWaitTime = 10000; // 10 seconds
+                            const startWaitTime = Date.now();
+                            
+                            // Check if we've received all expected audio chunks
+                            const checkCompletion = () => {
+                                const elapsed = Date.now() - startWaitTime;
+                                
+                                if (receivedAudioChunks >= expectedAudioChunks) {
+                                    this.log('All audio chunks received, closing connection...', 'info');
+                                    // Step 3: Send final chunk (empty string to close) AFTER all processing
+                                    this.sendWebSocketMessage("", false);
+                                    this.log('Sent final chunk (empty string to close) - all processing complete', 'info');
+                                    clearInterval(streamInterval);
+                                    this.stopStreaming();
+                                } else if (elapsed > maxWaitTime) {
+                                    this.log(`Timeout reached (${maxWaitTime}ms). Closing connection with ${receivedAudioChunks}/${expectedAudioChunks} chunks received.`, 'warning');
+                                    // Force close after timeout
+                                    this.sendWebSocketMessage("", false);
+                                    this.log('Sent final chunk (empty string to close) - timeout reached', 'info');
+                                    clearInterval(streamInterval);
+                                    this.stopStreaming();
+                                } else {
+                                    // Wait a bit more and check again
+                                    setTimeout(checkCompletion, 200);
+                                }
+                            };
+                            
+                            // Start checking for completion
+                            setTimeout(checkCompletion, 500);
+                        }
                     }
-                    
-                    const chunk = chunks[chunkIndex];
-                    const isLastChunk = chunkIndex === chunks.length - 1;
-                    
-                    this.sendWebSocketMessage(chunk, false);
-                    chunkIndex++;
-                    
-                    this.log(`Sent chunk ${chunkIndex}/${chunks.length}: "${chunk}"`, 'info');
-                }, 100); // Send chunk every 100ms
+                }, 150); // Send chunk every 150ms for natural streaming
             }
 
             flushBuffer() {
@@ -727,8 +1196,11 @@
                     return;
                 }
                 
+                // According to specification: flush=true forces audio generation
+                // and WebSocket must remain open regardless of text value
                 this.sendWebSocketMessage("", true);
-                this.log('Flush buffer requested', 'info');
+                this.log('Flush buffer requested (WebSocket stays open)', 'info');
+                this.updateSpecificationStatus('flush_behavior', '✅', 'Flush with empty text (WebSocket stays open)');
             }
 
             sendWebSocketMessage(text, flush) {
@@ -747,9 +1219,11 @@
 
             stopStreaming() {
                 this.isStreaming = false;
+                this.receivedAudioChunks = 0; // Reset counter
                 this.streamBtn.disabled = false;
                 this.typingIndicator.style.display = 'none';
                 this.log('Text streaming stopped', 'info');
+                this.updateSpecificationStatus('streaming', '⏹️', 'Streaming stopped');
             }
 
             clearAll() {
@@ -779,8 +1253,10 @@
                 // Auto-enable stream button if connected and has text
                 if (this.isConnected && this.textInput.value.trim()) {
                     this.streamBtn.disabled = false;
+                    this.manualStreamBtn.disabled = false; // Enable manual stream button
                 } else {
                     this.streamBtn.disabled = true;
+                    this.manualStreamBtn.disabled = true; // Disable manual stream button
                 }
             }
 

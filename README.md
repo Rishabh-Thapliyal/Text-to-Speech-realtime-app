@@ -2,6 +2,41 @@
 
 A bidirectional streaming WebSocket Text-to-Speech (TTS) system with real-time audio generation and character alignment, similar to the ElevenLabs WebSocket API.
 
+## 📋 WebSocket Input/Output Specification
+
+### **Input Format**
+The client streams JSON chunks to the server via WebSocket with these fields:
+
+- **`text`**: A string for which audio will be generated
+  - **First chunk**: Contains only a single space character `" "`
+  - **Final chunk**: Empty string `""` to close the WebSocket
+  - **Other chunks**: Actual text content
+- **`flush`**: Boolean that forces audio generation for buffered text
+  - **`true`**: WebSocket remains open regardless of text value
+  - **`false`**: Normal processing
+
+### **Output Format**
+The server streams audio chunks back via the same WebSocket:
+
+- **`audio`**: Base64 encoding of 44.1 kHz, 16-bit, mono PCM audio
+- **`alignment`**: Character alignment data with timestamps
+
+### **Character Alignment Format**
+```json
+{
+  "chars": ["T", "h", "i", "s", " ", "i", "s", " ", "a", "n", " ", "e", "x", "a", "m", "p", "l", "e", ".", " "],
+  "char_start_times_ms": [0, 70, 139, 186, 221, 279, 325, 360, 406, 441, 476, 534, 580, 662, 755, 824, 894, 952, 1010],
+  "char_durations_ms": [70, 69, 46, 35, 58, 45, 34, 46, 34, 34, 58, 45, 82, 92, 68, 70, 57, 58, 46]
+}
+```
+
+### **Audio Format**
+- **Sample Rate**: 44.1 kHz (fixed)
+- **Bit Depth**: 16-bit (fixed)
+- **Channels**: Mono (1 channel, fixed)
+- **Encoding**: PCM
+- **Transmission**: Base64 encoded via WebSocket
+
 ## 🚀 Features
 
 - **Bidirectional WebSocket Streaming**: Real-time text input and audio output
