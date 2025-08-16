@@ -106,7 +106,7 @@ SERVER_CONFIG = {
     "host": "0.0.0.0",
     
     # Port to listen on
-    "port": 8000,
+    "port": 8001,  # Changed from 8000 to avoid conflicts
     
     # Enable debug mode
     "debug": False,
