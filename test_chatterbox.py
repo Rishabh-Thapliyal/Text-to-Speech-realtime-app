@@ -3,9 +3,15 @@
 Test script for Chatterbox TTS integration
 """
 
+import warnings
 import torch
 import torchaudio as ta
 from chatterbox.tts import ChatterboxTTS
+
+# Suppress specific deprecation warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*LoRACompatibleLinear.*")
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*torch.backends.cuda.sdp_kernel.*")
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*past_key_values.*")
 
 def test_chatterbox_tts():
     """Test the Chatterbox TTS model"""
@@ -15,8 +21,13 @@ def test_chatterbox_tts():
     try:
         # Initialize model
         print("🔧 Initializing Chatterbox TTS model...")
-        model = ChatterboxTTS.from_pretrained(device="cuda" if torch.cuda.is_available() else "cpu")
-        print(f"✅ Model loaded successfully on device: {model.device if hasattr(model, 'device') else 'CPU'}")
+        
+        # Use modern torch attention implementation if available
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"🎯 Using device: {device}")
+        
+        model = ChatterboxTTS.from_pretrained(device=device)
+        print(f"✅ Model loaded successfully on device: {device.upper()}")
         
         # Test text
         text = "Ezreal and Jinx teamed up with Ahri, Yasuo, and Teemo to take down the enemy's Nexus in an epic late-game pentakill."

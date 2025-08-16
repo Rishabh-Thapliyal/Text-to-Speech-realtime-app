@@ -3,6 +3,7 @@ import base64
 import json
 import logging
 import time
+import warnings
 from typing import Dict, List, Optional
 import io
 import wave
@@ -10,6 +11,11 @@ import numpy as np
 import sys
 import os
 import tempfile
+
+# Suppress specific deprecation warnings
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*LoRACompatibleLinear.*")
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*torch.backends.cuda.sdp_kernel.*")
+warnings.filterwarnings("ignore", category=FutureWarning, message=".*past_key_values.*")
 
 # Add parent directory to path to import config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
