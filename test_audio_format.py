@@ -11,7 +11,7 @@ import struct
 
 async def test_audio_format():
     """Test the audio format from the backend"""
-    uri = "ws://localhost:8000/ws/tts"
+    uri = "ws://localhost:8001/ws/tts"
     
     try:
         print("🔌 Connecting to WebSocket server...")

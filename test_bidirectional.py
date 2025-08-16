@@ -11,7 +11,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 class BidirectionalTTSClient:
-    def __init__(self, uri="ws://localhost:8000/ws/tts"):
+    def __init__(self, uri="ws://localhost:8001/ws/tts"):
         self.uri = uri
         self.websocket = None
         self.is_connected = False
