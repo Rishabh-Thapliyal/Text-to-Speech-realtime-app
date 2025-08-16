@@ -17,7 +17,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import torch
-import torchaudio
+import torchaudio as ta
 import soundfile as sf
 import librosa
 import threading
@@ -61,145 +61,73 @@ app.add_middleware(
 class TTSManager:
     def __init__(self):
         self.model = None
-        self.processor = None
         self.device = None
         self._init_engine()
     
     def _init_engine(self):
-        """Initialize the RealtimeTTS engine with Chatterbox model"""
+        """Initialize the Chatterbox TTS engine"""
         try:
             # Set device (GPU if available, else CPU)
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
             logger.info(f"Using device: {self.device}")
             
-            # Import RealtimeTTS components
+            # Import and initialize Chatterbox TTS
             try:
-                from transformers import AutoTokenizer, AutoModelForTextToSpeech
+                from chatterbox.tts import ChatterboxTTS
                 
-                # Check if using local Chatterbox weights
-                if tts_config.get("chatterbox", {}).get("use_local_weights", False):
-                    weights_path = tts_config["chatterbox"]["weights_path"]
-                    if os.path.exists(weights_path):
-                        logger.info(f"Loading local Chatterbox model from: {weights_path}")
-                        self.tokenizer = AutoTokenizer.from_pretrained(weights_path)
-                        self.model = AutoModelForTextToSpeech.from_pretrained(weights_path)
-                    else:
-                        logger.warning(f"Local weights path not found: {weights_path}, using default model")
-                        self._load_default_model()
-                else:
-                    self._load_default_model()
-                
-                # Move model to device
-                self.model = self.model.to(self.device)
-                self.model.eval()
-                
-                logger.info("RealtimeTTS engine initialized successfully with Chatterbox model")
+                logger.info("Loading Chatterbox TTS model...")
+                self.model = ChatterboxTTS.from_pretrained(device=self.device)
+                logger.info("Chatterbox TTS engine initialized successfully")
                 
             except ImportError:
-                logger.warning("Transformers not available, falling back to basic TTS implementation")
-                self._init_fallback_tts()
+                logger.error("Chatterbox TTS not available. Please install with: pip install chatterbox-tts")
+                raise
                 
         except Exception as e:
             logger.error(f"Failed to initialize TTS engine: {e}")
-            self._init_fallback_tts()
-    
-    def _load_default_model(self):
-        """Load default TTS model"""
-        try:
-            model_name = tts_config.get("model_name", "microsoft/speecht5_tts")
-            logger.info(f"Loading default model: {model_name}")
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-            self.model = AutoModelForTextToSpeech.from_pretrained(model_name)
-        except Exception as e:
-            logger.error(f"Failed to load default model: {e}")
             raise
     
-    def _init_fallback_tts(self):
-        """Fallback TTS implementation using basic audio generation"""
-        logger.info("Using fallback TTS implementation")
-        self.model = "fallback"
-        self.tokenizer = None
-    
     def text_to_audio(self, text: str) -> Optional[bytes]:
-        """Convert text to audio using RealtimeTTS with Chatterbox model"""
+        """Convert text to audio using Chatterbox TTS"""
         if not text.strip():
             return None
         
         try:
-            if self.model == "fallback":
-                return self._fallback_tts(text)
+            # Generate audio using Chatterbox
+            wav = self.model.generate(text)
             
-            # Use RealtimeTTS with Chatterbox model
-            return self._realtime_tts(text)
+            # Convert to numpy array if it's a tensor
+            if hasattr(wav, 'cpu'):
+                wav = wav.cpu().numpy()
             
-        except Exception as e:
-            logger.error(f"Error generating audio: {e}")
-            return self._fallback_tts(text)
-    
-    def _realtime_tts(self, text: str) -> Optional[bytes]:
-        """Generate audio using RealtimeTTS with Chatterbox model"""
-        try:
-            with torch.no_grad():
-                # Tokenize input text
-                inputs = self.tokenizer(text, return_tensors="pt").to(self.device)
-                
-                # Generate speech
-                speech = self.model.generate_speech(inputs["input_ids"], self.model.speaker_embeddings)
-                
-                # Convert to numpy array
-                speech = speech.cpu().numpy().squeeze()
-                
-                # Normalize audio
-                speech = librosa.util.normalize(speech)
-                
-                # Convert to target format
-                target_sample_rate = audio_config.get("sample_rate", 44100)
-                target_bit_depth = audio_config.get("bit_depth", 16)
-                
-                # Resample if needed
-                if speech.shape[0] > 0:
-                    current_sample_rate = 16000  # Default for SpeechT5
-                    if current_sample_rate != target_sample_rate:
-                        speech = librosa.resample(speech, orig_sr=current_sample_rate, target_sr=target_sample_rate)
-                
-                # Convert to target bit depth
-                if target_bit_depth == 16:
-                    speech = (speech * 32767).astype(np.int16)
-                elif target_bit_depth == 8:
-                    speech = (speech * 127).astype(np.int8)
-                else:
-                    speech = (speech * 32767).astype(np.int16)
-                
-                # Convert to bytes
-                return speech.tobytes()
-                
-        except Exception as e:
-            logger.error(f"RealtimeTTS generation failed: {e}")
-            return None
-    
-    def _fallback_tts(self, text: str) -> Optional[bytes]:
-        """Fallback TTS using basic audio generation"""
-        try:
-            # Generate a simple tone-based audio for demonstration
-            sample_rate = audio_config.get("sample_rate", 44100)
-            duration = len(text) * 0.1  # 100ms per character
+            # Ensure wav is 1D
+            if wav.ndim > 1:
+                wav = wav.squeeze()
             
-            # Create a simple sine wave tone
-            t = np.linspace(0, duration, int(sample_rate * duration), False)
-            frequency = 440  # A4 note
-            audio_data = np.sin(2 * np.pi * frequency * t) * 0.3
+            # Normalize audio
+            wav = librosa.util.normalize(wav)
             
             # Convert to target format
+            target_sample_rate = audio_config.get("sample_rate", 44100)
             target_bit_depth = audio_config.get("bit_depth", 16)
+            
+            # Resample if needed
+            if hasattr(self.model, 'sr') and self.model.sr != target_sample_rate:
+                wav = librosa.resample(wav, orig_sr=self.model.sr, target_sr=target_sample_rate)
+            
+            # Convert to target bit depth
             if target_bit_depth == 16:
-                audio_data = (audio_data * 32767).astype(np.int16)
+                wav = (wav * 32767).astype(np.int16)
             elif target_bit_depth == 8:
-                audio_data = (audio_data * 127).astype(np.int8)
+                wav = (wav * 127).astype(np.int8)
+            else:
+                wav = (wav * 32767).astype(np.int16)
             
-            return audio_data.tobytes()
-            
+            # Convert to bytes
+            return wav.tobytes()
+                
         except Exception as e:
-            logger.error(f"Fallback TTS failed: {e}")
+            logger.error(f"Chatterbox TTS generation failed: {e}")
             return None
     
 
@@ -372,7 +300,7 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "tts_engine": "available" if tts_manager.engine else "unavailable",
+        "tts_engine": "available" if tts_manager.model else "unavailable",
         "active_connections": len(websocket_manager.active_connections)
     }
 

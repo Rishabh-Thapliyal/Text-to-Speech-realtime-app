@@ -1,68 +1,77 @@
 @echo off
-REM SigIQ TTS System Startup Script for Windows
+REM SigIQ TTS WebSocket System - Startup Script for Windows
+REM Updated for Chatterbox TTS Integration
 
-echo 🎤 Starting SigIQ TTS WebSocket System...
-echo ==========================================
+echo 🎤 SigIQ TTS WebSocket System
+echo 🚀 Starting with Chatterbox TTS Integration
+echo ==================================================
 
-REM Check if conda environment exists
-conda env list | findstr "tts" >nul
-if %errorlevel% equ 0 (
-    echo ✅ TTS conda environment found
-    echo 🔄 Activating TTS environment...
-    call conda activate tts
-) else (
-    echo ❌ TTS conda environment not found
-    echo 📝 Creating TTS environment...
-    conda create -n tts python=3.11.13 -y
-    echo 🔄 Activating TTS environment...
-    call conda activate tts
-)
-
-REM Check if dependencies are installed
-echo 🔍 Checking dependencies...
-python -c "import fastapi, torch, transformers, numpy" 2>nul
-if %errorlevel% neq 0 (
-    echo 📦 Installing dependencies...
-    cd backend
-    pip install -r requirements.txt
-    cd ..
-) else (
-    echo ✅ Dependencies already installed
-)
-
-REM Start backend server
-echo 🚀 Starting backend server...
-cd backend
-start /B python main.py
-cd ..
-
-REM Wait a moment for backend to start
-timeout /t 3 /nobreak >nul
-
-REM Check if backend is running
-curl -s http://localhost:8000/health >nul 2>&1
-if %errorlevel% equ 0 (
-    echo ✅ Backend server started successfully on http://localhost:8000
-) else (
-    echo ❌ Backend server failed to start
+REM Check if Python is available
+python --version >nul 2>&1
+if errorlevel 1 (
+    echo ❌ Python is not installed or not in PATH
+    echo 💡 Please install Python 3.11+ and try again
     pause
     exit /b 1
 )
 
-REM Start frontend server
-echo 🌐 Starting frontend server...
-cd frontend
-start /B python -m http.server 8080
-cd ..
+echo ✅ Python detected
 
-echo ✅ Frontend server started on http://localhost:8080
+REM Check if backend directory exists
+if not exist "backend" (
+    echo ❌ Backend directory not found
+    echo 💡 Please run this script from the project root directory
+    pause
+    exit /b 1
+)
+
+REM Check if requirements.txt exists
+if not exist "backend\requirements.txt" (
+    echo ❌ requirements.txt not found in backend directory
+    echo 💡 Please ensure the backend directory contains requirements.txt
+    pause
+    exit /b 1
+)
+
+REM Install dependencies if needed
+echo 📦 Checking dependencies...
+cd backend
+
+REM Check if chatterbox-tts is installed
+python -c "import chatterbox.tts" >nul 2>&1
+if errorlevel 1 (
+    echo 📥 Installing dependencies...
+    pip install -r requirements.txt
+    
+    if errorlevel 1 (
+        echo ❌ Failed to install dependencies
+        echo 💡 Please check your Python environment and try again
+        pause
+        exit /b 1
+    )
+    echo ✅ Dependencies installed successfully
+) else (
+    echo ✅ Dependencies already installed
+)
+
+REM Test Chatterbox TTS integration
+echo 🧪 Testing Chatterbox TTS integration...
+cd ..
+python test_chatterbox.py
+if errorlevel 1 (
+    echo ⚠️  Chatterbox TTS integration test failed, but continuing...
+) else (
+    echo ✅ Chatterbox TTS integration test passed
+)
+
+REM Start the backend server
+echo 🚀 Starting backend server...
+cd backend
+echo 📍 Server will be available at: http://localhost:8000
+echo 🔌 WebSocket endpoint: ws://localhost:8000/ws/tts
+echo 📚 API documentation: http://localhost:8000/docs
 echo.
-echo 🎉 SigIQ TTS System is now running!
-echo.
-echo 📱 Frontend: http://localhost:8080
-echo 🔌 Backend: http://localhost:8000
-echo 📚 API Docs: http://localhost:8000/docs
-echo.
-echo 🛑 To stop the system, close this window or press any key
-echo.
-pause >nul
+echo Press Ctrl+C to stop the server
+echo ==================================================
+
+python main.py

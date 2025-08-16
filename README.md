@@ -11,13 +11,14 @@ A bidirectional streaming WebSocket Text-to-Speech (TTS) system with real-time a
 - **Modern Web Interface**: Beautiful, responsive testing client
 - **Real-time Captions**: Live character highlighting synchronized with audio
 - **Concurrent Processing**: Multiple WebSocket connections supported
+- **Chatterbox TTS Integration**: High-quality text-to-speech using the Chatterbox model
 
 ## 🏗️ Architecture
 
 ```
 ┌─────────────────┐    WebSocket    ┌─────────────────┐    TTS Engine    ┌─────────────────┐
-│   Frontend      │ ◄──────────────► │   Backend       │ ◄──────────────► │   pyttsx3       │
-│   Client        │                 │   FastAPI       │                 │   (TTS)         │
+│   Frontend      │ ◄──────────────► │   Backend       │ ◄──────────────► │   Chatterbox    │
+│   Client        │                 │   FastAPI       │                 │   TTS           │
 │                 │                 │   Server        │                 │                 │
 └─────────────────┘                 └─────────────────┘                 └─────────────────┘
 ```
@@ -62,16 +63,12 @@ brew install espeak
 conda install -c conda-forge espeak
 ```
 
-### 5. Setup Chatterbox Model Weights (Optional)
+### 5. Test Chatterbox TTS Integration
 ```bash
-# Run the setup script to configure Chatterbox integration
-python setup_chatterbox.py
+# Test the Chatterbox TTS integration
+python test_chatterbox.py
 
-# Download a specific model (e.g., from Hugging Face)
-python setup_chatterbox.py --download-model "microsoft/speecht5_tts"
-
-# Or use your own Chatterbox model weights
-# Place your model files in the ./chatterbox_weights directory
+# This will generate a test audio file to verify everything is working
 ```
 
 ## 🚀 Running the System

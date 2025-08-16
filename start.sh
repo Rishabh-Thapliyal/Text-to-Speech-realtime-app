@@ -1,84 +1,81 @@
 #!/bin/bash
 
-# SigIQ TTS System Startup Script
+# SigIQ TTS WebSocket System - Startup Script
+# Updated for Chatterbox TTS Integration
 
-echo "🎤 Starting SigIQ TTS WebSocket System..."
-echo "=========================================="
+echo "🎤 SigIQ TTS WebSocket System"
+echo "🚀 Starting with Chatterbox TTS Integration"
+echo "=" * 50
 
-# Check if conda environment exists
-if conda env list | grep -q "tts"; then
-    echo "✅ TTS conda environment found"
-    echo "🔄 Activating TTS environment..."
-    source $(conda info --base)/etc/profile.d/conda.sh
-    conda activate tts
-else
-    echo "❌ TTS conda environment not found"
-    echo "📝 Creating TTS environment..."
-    conda create -n tts python=3.11.13 -y
-    echo "🔄 Activating TTS environment..."
-    source $(conda info --base)/etc/profile.d/conda.sh
-    conda activate tts
+# Check if Python is available
+if ! command -v python3 &> /dev/null; then
+    echo "❌ Python 3 is not installed or not in PATH"
+    echo "💡 Please install Python 3.11+ and try again"
+    exit 1
 fi
 
-# Check if dependencies are installed
-echo "🔍 Checking dependencies..."
-if ! python -c "import fastapi, torch, transformers, numpy" 2>/dev/null; then
-    echo "📦 Installing dependencies..."
-    cd backend
-    pip install -r requirements.txt
-    cd ..
+# Check Python version
+python_version=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+required_version="3.11"
+
+if [ "$(printf '%s\n' "$required_version" "$python_version" | sort -V | head -n1)" != "$required_version" ]; then
+    echo "❌ Python $python_version detected, but Python $required_version+ is required"
+    echo "💡 Please upgrade Python and try again"
+    exit 1
+fi
+
+echo "✅ Python $python_version detected"
+
+# Check if backend directory exists
+if [ ! -d "backend" ]; then
+    echo "❌ Backend directory not found"
+    echo "💡 Please run this script from the project root directory"
+    exit 1
+fi
+
+# Check if requirements.txt exists
+if [ ! -f "backend/requirements.txt" ]; then
+    echo "❌ requirements.txt not found in backend directory"
+    echo "💡 Please ensure the backend directory contains requirements.txt"
+    exit 1
+fi
+
+# Install dependencies if needed
+echo "📦 Checking dependencies..."
+cd backend
+
+# Check if chatterbox-tts is installed
+if ! python3 -c "import chatterbox.tts" &> /dev/null; then
+    echo "📥 Installing dependencies..."
+    pip3 install -r requirements.txt
+    
+    if [ $? -ne 0 ]; then
+        echo "❌ Failed to install dependencies"
+        echo "💡 Please check your Python environment and try again"
+        exit 1
+    fi
+    echo "✅ Dependencies installed successfully"
 else
     echo "✅ Dependencies already installed"
 fi
 
-# Start backend server
-echo "🚀 Starting backend server..."
-cd backend
-python main.py &
-BACKEND_PID=$!
+# Test Chatterbox TTS integration
+echo "🧪 Testing Chatterbox TTS integration..."
 cd ..
-
-# Wait a moment for backend to start
-sleep 3
-
-# Check if backend is running
-if curl -s http://localhost:8000/health > /dev/null; then
-    echo "✅ Backend server started successfully on http://localhost:8000"
+if python3 test_chatterbox.py; then
+    echo "✅ Chatterbox TTS integration test passed"
 else
-    echo "❌ Backend server failed to start"
-    exit 1
+    echo "⚠️  Chatterbox TTS integration test failed, but continuing..."
 fi
 
-# Start frontend server
-echo "🌐 Starting frontend server..."
-cd frontend
-python -m http.server 8080 &
-FRONTEND_PID=$!
-cd ..
-
-echo "✅ Frontend server started on http://localhost:8080"
+# Start the backend server
+echo "🚀 Starting backend server..."
+cd backend
+echo "📍 Server will be available at: http://localhost:8000"
+echo "🔌 WebSocket endpoint: ws://localhost:8000/ws/tts"
+echo "📚 API documentation: http://localhost:8000/docs"
 echo ""
-echo "🎉 SigIQ TTS System is now running!"
-echo ""
-echo "📱 Frontend: http://localhost:8080"
-echo "🔌 Backend: http://localhost:8000"
-echo "📚 API Docs: http://localhost:8000/docs"
-echo ""
-echo "🛑 To stop the system, press Ctrl+C"
-echo ""
+echo "Press Ctrl+C to stop the server"
+echo "=" * 50
 
-# Function to cleanup on exit
-cleanup() {
-    echo ""
-    echo "🛑 Shutting down SigIQ TTS System..."
-    kill $BACKEND_PID 2>/dev/null
-    kill $FRONTEND_PID 2>/dev/null
-    echo "✅ System stopped"
-    exit 0
-}
-
-# Set up signal handlers
-trap cleanup SIGINT SIGTERM
-
-# Keep script running
-wait
+python3 main.py
