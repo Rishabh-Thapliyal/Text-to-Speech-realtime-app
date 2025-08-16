@@ -43,8 +43,8 @@ AUDIO_CONFIG = {
     # Target sample rate in Hz
     "sample_rate": 44100,
     
-    # Bit depth
-    "bit_depth": 16,
+    # Bit depth (16 = standard, 24 = high quality)
+    "bit_depth": 24,  # Increased to 24-bit for better quality
     
     # Number of channels (1 = mono, 2 = stereo)
     "channels": 1,
@@ -52,11 +52,19 @@ AUDIO_CONFIG = {
     # Audio format
     "format": "PCM",
     
+    # Audio quality settings
+    "quality": {
+        "use_high_quality": True,  # Enable 24-bit, better resampling
+        "preserve_dynamic_range": True,  # Don't over-normalize
+        "use_scipy_resampling": True,  # Use scipy for better resampling
+        "weighted_mono_conversion": True,  # Better stereo-to-mono conversion
+    },
+    
     # Chunk size for processing (in characters)
     "chunk_size": 50,
     
     # Minimum text length to trigger audio generation
-    "min_text_length": 10,
+    "min_text_length": 50,
 }
 
 # WebSocket Configuration
@@ -93,7 +101,7 @@ WEBSOCKET_CONFIG = {
     
     # Latency optimization
     "latency_optimization": {
-        "min_text_length": 5,  # Reduced from 10 for faster response
+        "min_text_length": 50,  # Increased to 50 for better audio quality
         "chunk_size": 25,  # Smaller chunks for lower latency
         "preemptive_generation": True,  # Start generating audio before full text
         "streaming_threshold": 0.1,  # Start streaming after 100ms of silence

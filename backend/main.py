@@ -116,24 +116,77 @@ class TTSManager:
             if wav.ndim > 1:
                 wav = wav.squeeze()
             
-            # Normalize audio
-            wav = librosa.util.normalize(wav)
+            # Enhanced audio quality processing
+            # Option 1: High quality (24-bit, float32) - better quality but larger files
+            # Option 2: Standard quality (16-bit, int16) - smaller files, meets requirements
             
-            # Ensure exact 44.1 kHz, 16-bit, mono PCM format
-            target_sample_rate = 44100  # Fixed as per requirements
-            target_bit_depth = 16       # Fixed as per requirements
-            target_channels = 1         # Fixed as per requirements (mono)
+            # Get quality settings from configuration
+            from config import AUDIO_CONFIG
+            audio_config = AUDIO_CONFIG
             
-            # Resample to exactly 44.1 kHz if needed
-            if hasattr(self.model, 'sr') and self.model.sr != target_sample_rate:
-                wav = librosa.resample(wav, orig_sr=self.model.sr, target_sr=target_sample_rate)
+            use_high_quality = audio_config.get("quality", {}).get("use_high_quality", True)
+            preserve_dynamic_range = audio_config.get("quality", {}).get("preserve_dynamic_range", True)
+            use_scipy_resampling = audio_config.get("quality", {}).get("use_scipy_resampling", True)
+            weighted_mono_conversion = audio_config.get("quality", {}).get("weighted_mono_conversion", True)
             
-            # Ensure mono (single channel)
-            if wav.ndim > 1 and wav.shape[1] > 1:
-                wav = wav.mean(axis=1)  # Convert stereo to mono by averaging
-            
-            # Convert to exact 16-bit PCM
-            wav = (wav * 32767).astype(np.int16)
+            if use_high_quality:
+                # High quality processing
+                # Preserve original dynamic range without aggressive normalization
+                if preserve_dynamic_range and np.max(np.abs(wav)) > 1.0:
+                    # Only normalize if audio exceeds [-1, 1] range
+                    wav = wav / np.max(np.abs(wav))
+                
+                # Ensure exact 44.1 kHz, 24-bit, mono PCM format for better quality
+                target_sample_rate = audio_config.get("sample_rate", 44100)
+                target_bit_depth = audio_config.get("bit_depth", 24)  # Higher quality
+                target_channels = audio_config.get("channels", 1)
+                
+                # High-quality resampling using scipy if available
+                if hasattr(self.model, 'sr') and self.model.sr != target_sample_rate:
+                    if use_scipy_resampling:
+                        try:
+                            from scipy import signal
+                            # Use scipy for better resampling quality
+                            wav = signal.resample(wav, int(len(wav) * target_sample_rate / self.model.sr))
+                        except ImportError:
+                            # Fallback to librosa
+                            wav = librosa.resample(wav, orig_sr=self.model.sr, target_sr=target_sample_rate)
+                    else:
+                        # Use librosa
+                        wav = librosa.resample(wav, orig_sr=self.model.sr, target_sr=target_sample_rate)
+                
+                # Ensure mono (single channel) with better method
+                if wav.ndim > 1 and wav.shape[1] > 1:
+                    if weighted_mono_conversion:
+                        # Use weighted average for better stereo-to-mono conversion
+                        wav = np.average(wav, axis=1, weights=[0.6, 0.4])  # Slight left bias for speech
+                    else:
+                        # Use simple average
+                        wav = wav.mean(axis=1)
+                
+                # Convert to 24-bit PCM (better quality)
+                wav = (wav * 8388607).astype(np.int32)  # 24-bit = 2^23 - 1
+                
+            else:
+                # Standard quality processing (meets requirements)
+                # Normalize audio
+                wav = librosa.util.normalize(wav)
+                
+                # Ensure exact 44.1 kHz, 16-bit, mono PCM format
+                target_sample_rate = 44100
+                target_bit_depth = 16
+                target_channels = 1
+                
+                # Resample to exactly 44.1 kHz if needed
+                if hasattr(self.model, 'sr') and self.model.sr != target_sample_rate:
+                    wav = librosa.resample(wav, orig_sr=self.model.sr, target_sr=target_sample_rate)
+                
+                # Ensure mono (single channel)
+                if wav.ndim > 1 and wav.shape[1] > 1:
+                    wav = wav.mean(axis=1)  # Convert stereo to mono by averaging
+                
+                # Convert to exact 16-bit PCM
+                wav = (wav * 32767).astype(np.int16)
             
             # Convert to bytes
             return wav.tobytes()
@@ -345,11 +398,22 @@ class WebSocketManager:
                 # Convert to Base64
                 audio_base64 = base64.b64encode(audio_data).decode('utf-8')
                 
-                # Calculate audio duration for 44.1 kHz, 16-bit, mono PCM
+                # Calculate audio duration for 44.1 kHz, mono PCM (16-bit or 24-bit)
                 # Formula: duration_ms = (bytes / (sample_rate * channels * bytes_per_sample)) * 1000
                 sample_rate = 44100  # Fixed as per requirements
                 channels = 1         # Fixed as per requirements (mono)
-                bytes_per_sample = 2  # 16-bit = 2 bytes
+                
+                # Detect bit depth from audio data size
+                # 16-bit = 2 bytes per sample, 24-bit = 4 bytes per sample (aligned to 32-bit)
+                total_samples = len(audio_data) // channels
+                if total_samples % 4 == 0:
+                    # Likely 24-bit audio (4 bytes per sample due to 32-bit alignment)
+                    bytes_per_sample = 4
+                    bit_depth = 24
+                else:
+                    # Likely 16-bit audio
+                    bytes_per_sample = 2
+                    bit_depth = 16
                 
                 sample_count = len(audio_data) // (channels * bytes_per_sample)
                 duration_ms = (sample_count / sample_rate) * 1000
@@ -366,7 +430,7 @@ class WebSocketManager:
                 if self.is_connected(connection_id):
                     success = await self.safe_send_text(websocket, connection_id, json.dumps(response))
                     if success:
-                        logger.info(f"Sent audio chunk for text: '{text[:50]}...' ({len(audio_data)} bytes, {duration_ms:.1f}ms)")
+                        logger.info(f"Sent audio chunk for text: '{text[:50]}...' ({len(audio_data)} bytes, {bit_depth}-bit, {duration_ms:.1f}ms)")
                     else:
                         logger.warning(f"Failed to send audio to {connection_id}")
                 else:

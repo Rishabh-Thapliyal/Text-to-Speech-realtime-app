@@ -437,6 +437,7 @@
                 this.audioContext = null;
                 this.audioQueue = [];
                 this.currentAudioSource = null;
+                this.currentAudioItem = null;
                 this.chunkCount = 0;
                 this.totalAudioBytes = 0;
                 this.captionData = [];
@@ -806,8 +807,8 @@
                     this.displayOutputFormat(audioBase64, alignment, chunkNumber);
                 }
                 
-                // Start real-time character highlighting based on alignment data for this chunk
-                this.startCharacterHighlighting(alignment, chunkNumber);
+                // Character highlighting will be started when audio begins playing (synchronized)
+                // this.startCharacterHighlighting(alignment, chunkNumber);
                 
                 // Update the caption summary
                 this.updateCaptionSummary();
@@ -963,10 +964,13 @@
                     clearInterval(this.characterHighlightInterval);
                 }
                 
+                // Use audio start time for perfect synchronization
                 const startTime = Date.now();
                 const chars = alignment.chars;
                 const startTimes = alignment.char_start_times_ms;
                 const durations = alignment.char_durations_ms;
+                
+                this.log(`Starting synchronized caption highlighting for chunk ${chunkNumber} at ${startTime}ms`, 'info');
                 
                 this.characterHighlightInterval = setInterval(() => {
                     const elapsed = Date.now() - startTime;
@@ -1000,7 +1004,7 @@
                         this.characterHighlightInterval = null;
                         this.log(`Character highlighting completed for chunk ${chunkNumber}`, 'info');
                     }
-                }, 50); // Update every 50ms for smooth real-time animation
+                }, 25); // Update every 25ms for smoother real-time animation
             }
 
             // Add method to update caption summary
@@ -1043,6 +1047,13 @@
             clearAllCaptions() {
                 this.captions.innerHTML = '';
                 this.updateCaptionSummary(); // Update summary to show 0 chunks
+                
+                // Clear character highlighting
+                if (this.characterHighlightInterval) {
+                    clearInterval(this.characterHighlightInterval);
+                    this.characterHighlightInterval = null;
+                }
+                
                 this.log('All caption chunks cleared', 'info');
             }
 
@@ -1057,16 +1068,33 @@
                 this.currentAudioSource = this.audioContext.createBufferSource();
                 this.currentAudioSource.buffer = audioItem.buffer;
                 
+                // Store the audio item for synchronization
+                this.currentAudioItem = audioItem;
+                
                 this.currentAudioSource.onended = () => {
+                    // Clear character highlighting when audio ends
+                    if (this.characterHighlightInterval) {
+                        clearInterval(this.characterHighlightInterval);
+                        this.characterHighlightInterval = null;
+                    }
+                    
                     this.currentAudioSource = null;
+                    this.currentAudioItem = null;
                     this.playNextAudio();
                 };
                 
                 this.currentAudioSource.connect(this.audioContext.destination);
+                
+                // Start audio and caption highlighting simultaneously
                 this.currentAudioSource.start();
                 
+                // Start caption highlighting for this audio chunk
+                if (audioItem.alignment) {
+                    this.startCharacterHighlighting(audioItem.alignment, audioItem.chunkNumber);
+                }
+                
                 this.audioStatus.textContent = 'Playing';
-                this.log(`Playing audio chunk (${Math.round(audioItem.buffer.duration * 1000)}ms)`, 'info');
+                this.log(`Playing audio chunk (${Math.round(audioItem.buffer.duration * 1000)}ms) with synchronized captions`, 'info');
             }
 
             startStreaming() {
@@ -1222,6 +1250,18 @@
                 this.receivedAudioChunks = 0; // Reset counter
                 this.streamBtn.disabled = false;
                 this.typingIndicator.style.display = 'none';
+                
+                // Stop current audio and clear highlighting
+                if (this.currentAudioSource) {
+                    this.currentAudioSource.stop();
+                    this.currentAudioSource = null;
+                }
+                
+                if (this.characterHighlightInterval) {
+                    clearInterval(this.characterHighlightInterval);
+                    this.characterHighlightInterval = null;
+                }
+                
                 this.log('Text streaming stopped', 'info');
                 this.updateSpecificationStatus('streaming', '⏹️', 'Streaming stopped');
             }
