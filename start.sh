@@ -1,10 +1,12 @@
 #!/bin/bash
 
 # SigIQ TTS WebSocket System - Startup Script
-# Updated for Chatterbox TTS Integration
+# Updated for Dual TTS Model Support (Chatterbox + Kokoro)
 
-echo "🎤 SigIQ TTS WebSocket System"
-echo "🚀 Starting with Chatterbox TTS Integration"
+echo "🎭 SigIQ TTS WebSocket System"
+echo "🚀 Starting with Dual TTS Model Support"
+echo "   - Chatterbox TTS: High-quality streaming TTS"
+echo "   - Kokoro TTS: Lightweight, fast TTS (82M parameters)"
 echo "=" * 50
 
 # Check if Python is available
@@ -44,8 +46,8 @@ fi
 echo "📦 Checking dependencies..."
 cd backend
 
-# Check if chatterbox-tts is installed
-if ! python3 -c "import chatterbox.tts" &> /dev/null; then
+# Check if TTS models are installed
+if ! python3 -c "import chatterbox.tts" &> /dev/null || ! python3 -c "import kokoro" &> /dev/null; then
     echo "📥 Installing dependencies..."
     pip3 install -r requirements.txt
     
@@ -59,8 +61,8 @@ else
     echo "✅ Dependencies already installed"
 fi
 
-# Test Chatterbox TTS integration
-echo "🧪 Testing Chatterbox TTS integration..."
+# Test TTS model integration
+echo "🧪 Testing TTS model integration..."
 cd ..
 if python3 test_chatterbox.py; then
     echo "✅ Chatterbox TTS integration test passed"
@@ -71,9 +73,18 @@ fi
 # Start the backend server
 echo "🚀 Starting backend server..."
 cd backend
-echo "📍 Server will be available at: http://localhost:8000"
-echo "🔌 WebSocket endpoint: ws://localhost:8000/ws/tts"
-echo "📚 API documentation: http://localhost:8000/docs"
+echo "📍 Server will be available at: http://localhost:8001"
+echo "🔌 WebSocket endpoint: ws://localhost:8001/ws/tts"
+echo "📚 API documentation: http://localhost:8001/docs"
+echo ""
+echo "🎭 Model Management:"
+echo "   GET  /models/current     - Show current TTS model"
+echo "   GET  /models             - Show all available models"
+echo "   POST /models/switch/kokoro     - Switch to Kokoro"
+echo "   POST /models/switch/chatterbox - Switch to Chatterbox"
+echo ""
+echo "🧪 Test model switching: python3 test_model_switching.py"
+echo "🎭 Interactive config: python3 config_models.py"
 echo ""
 echo "Press Ctrl+C to stop the server"
 echo "=" * 50

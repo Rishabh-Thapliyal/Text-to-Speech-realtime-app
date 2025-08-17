@@ -8,6 +8,9 @@ from typing import Dict, Any
 
 # TTS Engine Configuration
 TTS_CONFIG = {
+    # Model selection: "kokoro" or "chatterbox"
+    "selected_model": "chatterbox",  # Default to chatterbox
+    
     # Model configuration
     "model_name": "microsoft/speecht5_tts",  # Base model, replace with your Chatterbox model path
     "model_path": None,  # Local path to Chatterbox model weights
@@ -35,6 +38,17 @@ TTS_CONFIG = {
         "model_type": "realtime_tts",  # Model type for RealtimeTTS
         "enable_streaming": True,  # Enable real-time streaming
         "chunk_size": 50,  # Text chunk size for streaming
+        "vocoder": "hifigan",  # Vocoder preference (handled internally by library)
+    },
+    
+    # Kokoro specific settings
+    "kokoro": {
+        "lang_code": "a",  # Language code for Kokoro
+        "voice": "af_heart",  # Default voice for Kokoro
+        "sample_rate": 24000,  # Kokoro's native sample rate
+        "enable_streaming": True,  # Enable real-time streaming
+        "chunk_size": 50,  # Text chunk size for streaming
+        "vocoder": "hifigan",  # Vocoder preference (handled internally by library)
     }
 }
 
@@ -44,7 +58,7 @@ AUDIO_CONFIG = {
     "sample_rate": 44100,
     
     # Bit depth (16 = standard, 24 = high quality)
-    "bit_depth": 24,  # Increased to 24-bit for better quality
+    "bit_depth": 16,  # Increased to 24-bit for better quality
     
     # Number of channels (1 = mono, 2 = stereo)
     "channels": 1,
@@ -56,7 +70,8 @@ AUDIO_CONFIG = {
     "quality": {
         "use_high_quality": True,  # Enable 24-bit, better resampling
         "preserve_dynamic_range": True,  # Don't over-normalize
-        "use_scipy_resampling": True,  # Use scipy for better resampling
+        "use_scipy_resampling": False,  # librosa is better for speech
+        "resample_method": "kaiser_best",  # librosa's highest quality
         "weighted_mono_conversion": True,  # Better stereo-to-mono conversion
     },
     

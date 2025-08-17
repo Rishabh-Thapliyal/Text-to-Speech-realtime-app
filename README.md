@@ -48,6 +48,130 @@ The server streams audio chunks back via the same WebSocket:
 - **Concurrent Processing**: Multiple WebSocket connections supported
 - **Chatterbox TTS Integration**: High-quality text-to-speech using the Chatterbox model
 
+## 🎭 Model Switching
+
+The system now supports **two TTS models** with seamless switching:
+
+### **Available Models**
+- **Chatterbox TTS**: High-quality, real-time TTS with streaming support
+- **Kokoro TTS**: Lightweight, fast TTS with 82M parameters and Apache license
+
+### **Model Switching API**
+```bash
+# Get current model info
+GET /models/current
+
+# Get all available models
+GET /models
+
+# Switch to Kokoro model
+POST /models/switch/kokoro
+
+# Switch to Chatterbox model
+POST /models/switch/chatterbox
+```
+
+### **Configuration**
+Models can be configured in `config.py`:
+```python
+TTS_CONFIG = {
+    "selected_model": "chatterbox",  # or "kokoro"
+    "kokoro": {
+        "lang_code": "a",
+        "voice": "af_heart",
+        "sample_rate": 24000
+    },
+    "chatterbox": {
+        "enable_streaming": True,
+        "chunk_size": 50
+    }
+}
+```
+
+### **Dynamic Switching**
+Models can be switched at runtime without restarting the server:
+```python
+# Switch models programmatically
+import requests
+response = requests.post("http://localhost:8001/models/switch/kokoro")
+```
+
+## 🎨 **Model Selection UI**
+
+### **Interactive Model Selection**
+The frontend now includes a user-friendly model selection interface:
+
+- **🎭 Model Dropdown**: Choose between Chatterbox and Kokoro models
+- **🔄 Switch Model Button**: Instantly switch models when connected
+- **🔍 Refresh Status Button**: Check current model status
+- **📊 Visual Status Indicator**: Real-time model status display
+
+### **UI Features**
+```
+🎭 TTS Model Selection
+├── 🔵 Chatterbox TTS (High Quality)
+├── 🟢 Kokoro TTS (Fast & Lightweight)
+├── 🔄 Switch Model (enabled when connected)
+└── 🔍 Refresh Status
+```
+
+### **How to Use the UI**
+1. **Connect** to the WebSocket server
+2. **Select** your preferred model from the dropdown
+3. **Click** "🔄 Switch Model" to switch
+4. **Watch** the status indicator change in real-time
+5. **Use** "🔍 Refresh Status" to verify current model
+
+### **Status Indicators**
+- **🔵 Chatterbox Active**: Blue indicator for Chatterbox model
+- **🟢 Kokoro Active**: Green indicator for Kokoro model
+- **❓ Unknown**: Gray indicator when status is unclear
+
+### **Testing the UI**
+```bash
+# Test model selection functionality
+python test_model_ui.py
+
+# Test complete system
+python test_model_switching.py
+```
+
+## 🧹 **Buffer Management & Text Processing**
+
+### **Buffer Clearing Fix**
+The system now properly clears text buffers between requests to prevent text accumulation:
+
+- **Automatic Clearing**: Buffers are cleared after each TTS generation
+- **Manual Clearing**: Use the "🧹 Clear Buffer" button in the UI
+- **API Endpoints**: Programmatic buffer management available
+
+### **Buffer Management API**
+```bash
+# Get buffer content for a connection
+GET /connections/{connection_id}/buffer
+
+# Clear buffer for a connection
+POST /connections/{connection_id}/buffer/clear
+
+# Get all active connections and their buffers
+GET /connections
+```
+
+### **Text Processing Behavior**
+- **Each Request**: Processes only the new text, not accumulated text
+- **No Duplication**: Previous text chunks are not included in new requests
+- **Clean State**: Fresh buffer for each new TTS request
+- **Proper Streaming**: Text chunks are processed sequentially with delays
+
+### **Testing Buffer Clearing**
+```bash
+# Test buffer functionality
+python test_buffer_clearing.py
+
+# Test model switching
+python test_model_switching.py
+```
+
 ## 🏗️ Architecture
 
 ```
@@ -89,6 +213,12 @@ cd backend
 pip install -r requirements.txt
 ```
 
+**Note**: The system supports two TTS engines:
+- **Chatterbox TTS**: Installed via `chatterbox-tts` package
+- **Kokoro TTS**: Installed via `kokoro>=0.9.2` package
+
+Both engines will be installed automatically with the requirements.txt file.
+
 ### 4. Install System Dependencies (macOS)
 ```bash
 # Install espeak for TTS engine (optional, for fallback)
@@ -96,6 +226,75 @@ brew install espeak
 
 # Or install via conda
 conda install -c conda-forge espeak
+```
+
+## 🚀 Usage
+
+### **Starting the Server**
+```bash
+cd backend
+python main.py
+```
+
+The server will start on `http://localhost:8001` with the default model (Chatterbox).
+
+### **Testing Model Switching**
+```bash
+# Test the model switching functionality
+python test_model_switching.py
+
+# Run the demo
+python demo_models.py
+```
+
+### **WebSocket TTS Usage**
+```javascript
+// Connect to TTS WebSocket
+const ws = new WebSocket('ws://localhost:8001/ws/tts');
+
+// Send text for TTS
+ws.send(JSON.stringify({
+    text: "Hello, this is a test!",
+    flush: false
+}));
+
+// Force audio generation
+ws.send(JSON.stringify({
+    text: "",
+    flush: true
+}));
+
+// Close connection
+ws.send(JSON.stringify({
+    text: "",
+    flush: false
+}));
+```
+
+### **Model Configuration Examples**
+
+**Using Kokoro TTS:**
+```python
+# Switch to Kokoro
+import requests
+requests.post("http://localhost:8001/models/switch/kokoro")
+
+# Kokoro will use:
+# - Language code: 'a' (default)
+# - Voice: 'af_heart' (default)
+# - Sample rate: 24000 Hz (converted to 44.1 kHz output)
+```
+
+**Using Chatterbox TTS:**
+```python
+# Switch to Chatterbox
+import requests
+requests.post("http://localhost:8001/models/switch/chatterbox")
+
+# Chatterbox will use:
+# - High-quality streaming TTS
+# - Configurable chunk sizes
+# - GPU acceleration if available
 ```
 
 ### 5. Test Chatterbox TTS Integration
