@@ -155,6 +155,15 @@
             transform: none !important;
         }
 
+        .btn.btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn.btn-danger:hover {
+            background: #c82333;
+        }
+
         .output-section {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -176,47 +185,197 @@
             padding-bottom: 8px;
         }
 
-        .captions {
+        .audio-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
             background: white;
-            padding: 15px;
-            border-radius: 8px;
-            min-height: 200px;
-            max-height: 400px;
-            overflow-y: auto;
+            border-radius: 6px;
             border: 1px solid #dee2e6;
+        }
+
+        .stat-label {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .stat-value {
+            color: #4facfe;
+            font-weight: 600;
+        }
+
+        .audio-controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .audio-controls .btn {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+
+        .captions-container {
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+            overflow: hidden;
+        }
+
+        .captions-header {
+            background: #f8f9fa;
+            padding: 15px;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .caption-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .caption-controls .btn {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .caption-summary {
+            font-size: 14px;
+            color: #6c757d;
+            text-align: center;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+
+        .captions {
+            padding: 20px;
+            min-height: 300px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #6c757d;
+            padding: 40px 20px;
+        }
+
+        .empty-state p {
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+
+        .empty-state small {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        .caption-chunk {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .caption-chunk-header {
+            background: #e3f2fd;
+            padding: 12px 15px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chunk-info {
+            font-size: 14px;
+            color: #1976d2;
+            font-weight: 600;
+        }
+
+        .chunk-timing {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .caption-text {
+            padding: 20px;
+            text-align: center;
+            font-size: 18px;
+            line-height: 1.8;
+            background: white;
         }
 
         .caption-char {
             display: inline-block;
-            padding: 2px 4px;
-            margin: 1px;
-            border-radius: 4px;
-            transition: all 0.3s ease;
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
+            padding: 4px 6px;
+            margin: 2px;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-weight: 500;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .caption-char:hover {
+            background: #e3f2fd;
+            transform: scale(1.05);
         }
 
         .caption-char.active {
-            background: #4facfe;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
             color: white;
             transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(79, 172, 254, 0.4);
         }
 
-        .audio-info {
-            background: white;
+        .caption-char.played {
+            background: #e8f5e8;
+            color: #2e7d32;
+        }
+
+        .caption-char.playing {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+            color: white;
+            animation: pulse 0.6s ease-in-out infinite alternate;
+        }
+
+        @keyframes pulse {
+            from { transform: scale(1.1); }
+            to { transform: scale(1.2); }
+        }
+
+        .alignment-data {
+            background: #f8f9fa;
             padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #dee2e6;
+            border-top: 1px solid #e9ecef;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            max-height: 200px;
+            overflow-y: auto;
         }
 
-        .audio-chunk {
-            background: #e9ecef;
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 6px;
-            font-family: 'Courier New', monospace;
+        .alignment-data h6 {
+            margin: 0 0 10px 0;
+            color: #495057;
             font-size: 12px;
-            word-break: break-all;
+        }
+
+        .alignment-data pre {
+            margin: 0;
+            white-space: pre-wrap;
+            color: #666;
         }
 
         .logs {
@@ -363,9 +522,6 @@
                     <button id="clearBtn" class="btn btn-secondary">
                         🗑️ Clear
                     </button>
-                    <button id="clearCaptionsBtn" class="btn btn-secondary">
-                        🗑️ Clear Captions
-                    </button>
                     <div class="typing-indicator" id="typingIndicator" style="display: none;">
                         <span class="typing-dot"></span>
                         <span class="typing-dot"></span>
@@ -379,21 +535,60 @@
                 <div class="output-panel">
                     <h3>🎵 Audio Output</h3>
                     <div class="audio-info">
-                        <p><strong>Status:</strong> <span id="audioStatus">Ready</span></p>
-                        <p><strong>Chunks Received:</strong> <span id="chunkCount">0</span></p>
-                        <p><strong>Total Audio:</strong> <span id="totalAudio">0</span> bytes</p>
-                        <p><strong>Current Duration:</strong> <span id="currentDuration">0</span>ms</p>
-                        <div id="audioChunks"></div>
+                        <div class="audio-stats">
+                            <div class="stat-item">
+                                <span class="stat-label">Status:</span>
+                                <span class="stat-value" id="audioStatus">Ready</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Chunks:</span>
+                                <span class="stat-value" id="chunkCount">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Total Audio:</span>
+                                <span class="stat-value" id="totalAudio">0</span> bytes
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Duration:</span>
+                                <span class="stat-value" id="currentDuration">0</span>ms
+                            </div>
+                        </div>
+                        <div class="audio-controls">
+                            <button id="playPauseBtn" class="btn btn-secondary" disabled>
+                                ▶️ Play All
+                            </button>
+                            <button id="stopBtn" class="btn btn-secondary" disabled>
+                                ⏹️ Stop
+                            </button>
+                            <button id="clearAudioBtn" class="btn btn-secondary">
+                                🗑️ Clear
+                            </button>
+                        </div>
                     </div>
                 </div>
 
                 <div class="output-panel">
                     <h3>📺 Real-time Captions</h3>
-                    <div class="captions" id="captions">
-                        <p style="color: #6c757d; text-align: center; margin-top: 80px;">
-                            Captions will appear here as audio is generated...<br>
-                            <small>Characters will highlight in real-time based on alignment data</small>
-                        </p>
+                    <div class="captions-container">
+                        <div class="captions-header">
+                            <div class="caption-controls">
+                                <button id="clearCaptionsBtn" class="btn btn-secondary">
+                                    🗑️ Clear Captions
+                                </button>
+                                <button id="toggleHighlightingBtn" class="btn btn-secondary">
+                                    🔴 Pause Highlighting
+                                </button>
+                            </div>
+                            <div class="caption-summary" id="captionSummary">
+                                <span>No captions yet</span>
+                            </div>
+                        </div>
+                        <div class="captions" id="captions">
+                            <div class="empty-state">
+                                <p>🎬 Captions will appear here as audio is generated...</p>
+                                <small>Characters will highlight in real-time based on audio playback</small>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -429,6 +624,20 @@
     </div>
 
     <script>
+        // Simple DOM test before creating the class
+        console.log('=== Pre-Class DOM Test ===');
+        console.log('Document ready state:', document.readyState);
+        console.log('Document body exists:', !!document.body);
+        
+        // Test basic elements
+        const testElements = ['captions', 'logContainer', 'specStatusContainer'];
+        testElements.forEach(id => {
+            const element = document.getElementById(id);
+            console.log(`Element '${id}':`, element ? 'FOUND' : 'NOT FOUND', element);
+        });
+        
+        console.log('=== End Pre-Class Test ===');
+
         class TTSWebSocketClient {
             constructor() {
                 this.websocket = null;
@@ -462,15 +671,116 @@
                 this.chunkCount = document.getElementById('chunkCount');
                 this.totalAudio = document.getElementById('totalAudio');
                 this.currentDuration = document.getElementById('currentDuration');
-                this.audioChunks = document.getElementById('audioChunks');
                 this.captions = document.getElementById('captions');
                 this.logContainer = document.getElementById('logContainer');
                 this.specStatusContainer = document.getElementById('specStatusContainer');
                 this.typingIndicator = document.getElementById('typingIndicator');
                 this.clearCaptionsBtn = document.getElementById('clearCaptionsBtn');
+                
+                // New audio control elements
+                this.playPauseBtn = document.getElementById('playPauseBtn');
+                this.stopBtn = document.getElementById('stopBtn');
+                this.clearAudioBtn = document.getElementById('clearAudioBtn');
+                this.toggleHighlightingBtn = document.getElementById('toggleHighlightingBtn');
+                
+                // Validate that all required elements exist
+                this.validateRequiredElements();
+                
+                // Debug DOM elements to help troubleshoot
+                setTimeout(() => this.debugDOMElements(), 100);
+            }
+
+            // Add method to validate all required DOM elements
+            validateRequiredElements() {
+                const requiredElements = {
+                    'Connect Button': this.connectBtn,
+                    'Disconnect Button': this.disconnectBtn,
+                    'Stream Button': this.streamBtn,
+                    'Text Input': this.textInput,
+                    'WebSocket URL': this.wsUrl,
+                    'Connection Status': this.connectionStatus,
+                    'Audio Status': this.audioStatus,
+                    'Chunk Count': this.chunkCount,
+                    'Total Audio': this.totalAudio,
+                    'Current Duration': this.currentDuration,
+                    'Captions': this.captions,
+                    'Log Container': this.logContainer,
+                    'Spec Status Container': this.specStatusContainer
+                };
+                
+                const missingElements = [];
+                const foundElements = [];
+                
+                for (const [name, element] of Object.entries(requiredElements)) {
+                    if (!element) {
+                        missingElements.push(name);
+                    } else {
+                        foundElements.push(name);
+                    }
+                }
+                
+                // Log what we found and what's missing
+                console.log('Found DOM elements:', foundElements);
+                
+                if (missingElements.length > 0) {
+                    console.error('Missing required DOM elements:', missingElements);
+                    this.log(`Error: Missing required DOM elements: ${missingElements.join(', ')}`, 'error');
+                    
+                    // Try to recover by waiting for DOM to be ready
+                    if (document.readyState === 'loading') {
+                        this.log('DOM still loading, waiting for ready state...', 'warning');
+                        document.addEventListener('DOMContentLoaded', () => {
+                            this.log('DOM loaded, retrying element initialization...', 'info');
+                            this.initializeElements();
+                        });
+                    }
+                } else {
+                    this.log('All required DOM elements found successfully', 'success');
+                }
+            }
+
+            // Debug method to check DOM elements manually
+            debugDOMElements() {
+                console.log('=== DOM Element Debug ===');
+                console.log('Document ready state:', document.readyState);
+                console.log('Document body:', document.body);
+                
+                // Check for captions element specifically
+                const captionsElement = document.getElementById('captions');
+                console.log('Captions element by ID:', captionsElement);
+                
+                // Check for captions element by class
+                const captionsByClass = document.querySelector('.captions');
+                console.log('Captions element by class:', captionsByClass);
+                
+                // Check for captions element by querySelector
+                const captionsByQuery = document.querySelector('[id="captions"]');
+                console.log('Captions element by querySelector:', captionsByQuery);
+                
+                // List all elements with 'captions' in their ID or class
+                const allElements = document.querySelectorAll('*');
+                const captionsRelated = [];
+                allElements.forEach(el => {
+                    if (el.id && el.id.includes('captions')) {
+                        captionsRelated.push({ type: 'id', element: el, id: el.id });
+                    }
+                    if (el.className && el.className.includes('captions')) {
+                        captionsRelated.push({ type: 'class', element: el, className: el.className });
+                    }
+                });
+                console.log('All captions-related elements:', captionsRelated);
+                
+                // Check if we're in the right context
+                console.log('Current script context:', this);
+                console.log('=== End Debug ===');
             }
 
             updateSpecificationStatus(type, status, message) {
+                if (!this.specStatusContainer) {
+                    console.log(`Specification status update: ${type} - ${status} ${message}`);
+                    return;
+                }
+                
                 const statusElements = this.specStatusContainer.querySelectorAll('.log-entry');
                 let targetElement = null;
                 
@@ -503,6 +813,12 @@
                 this.flushBtn.addEventListener('click', () => this.flushBuffer());
                 this.clearBtn.addEventListener('click', () => this.clearAll());
                 this.clearCaptionsBtn.addEventListener('click', () => this.clearAllCaptions());
+                
+                // New audio control event handlers
+                this.playPauseBtn.addEventListener('click', () => this.togglePlayPause());
+                this.stopBtn.addEventListener('click', () => this.stopAllAudio());
+                this.clearAudioBtn.addEventListener('click', () => this.clearAllAudio());
+                this.toggleHighlightingBtn.addEventListener('click', () => this.toggleHighlighting());
                 
                 this.textInput.addEventListener('input', () => this.handleTextInput());
                 this.textInput.addEventListener('keydown', (e) => this.handleKeyDown(e));
@@ -592,14 +908,20 @@
                     
                     if (message.audio && message.alignment) {
                         // Update specification compliance status
-                        this.updateSpecificationStatus('output_format', '✅', 'Audio + alignment received');
-                        this.updateSpecificationStatus('character_alignment', '✅', `${message.alignment.chars.length} characters with timing`);
+                        try {
+                            this.updateSpecificationStatus('output_format', '✅', 'Audio + alignment received');
+                            this.updateSpecificationStatus('character_alignment', '✅', `${message.alignment.chars.length} characters with timing`);
+                        } catch (statusError) {
+                            console.warn('Failed to update specification status:', statusError);
+                        }
                         
                         this.handleAudioChunk(message.audio, message.alignment);
                     }
                     
                 } catch (error) {
                     this.log('Failed to parse WebSocket message: ' + error.message, 'error');
+                    // Log the raw data for debugging
+                    console.error('Raw WebSocket data:', data);
                 }
             }
 
@@ -607,29 +929,225 @@
                 this.chunkCount.textContent = parseInt(this.chunkCount.textContent) + 1;
                 this.totalAudio.textContent = parseInt(this.totalAudio.textContent) + (audioBase64.length * 0.75); // Approximate size
                 
-                // Increment received audio chunks counter for streaming completion check
-                if (this.isStreaming) {
-                    this.receivedAudioChunks = (this.receivedAudioChunks || 0) + 1;
-                    this.log(`Received audio chunk ${this.receivedAudioChunks}`, 'info');
-                }
-                
-                // Display audio chunk info
-                const chunkDiv = document.createElement('div');
-                chunkDiv.className = 'audio-chunk';
-                chunkDiv.textContent = `Chunk ${this.chunkCount.textContent}: ${Math.round(audioBase64.length * 0.75)} bytes`;
-                this.audioChunks.appendChild(chunkDiv);
-                
-                // Keep only last 10 chunks
-                if (this.audioChunks.children.length > 10) {
-                    this.audioChunks.removeChild(this.audioChunks.firstChild);
-                }
-                
                 // Process audio immediately as received
                 this.processAudioChunk(audioBase64, alignment);
                 
                 this.log(`Received audio chunk: ${Math.round(audioBase64.length * 0.75)} bytes`, 'success');
             }
 
+            updateCaptions(alignment, audioBase64 = null) {
+                if (!alignment.chars || alignment.chars.length === 0) return;
+                
+                // Check if captions element exists
+                if (!this.captions) {
+                    this.log('Error: Captions element not found, using fallback logging only', 'error');
+                    // Fallback: just log the alignment data to console
+                    console.log('Caption data received (DOM not available):', alignment);
+                    return;
+                }
+                
+                try {
+                    // Validate alignment data format first
+                    const isValid = this.validateAlignmentFormat(alignment);
+                    if (!isValid) {
+                        this.log('⚠️ Displaying captions despite validation errors', 'warning');
+                    }
+                    
+                    // Create a new caption chunk container
+                    const captionContainer = document.createElement('div');
+                    captionContainer.className = 'caption-chunk';
+                    captionContainer.dataset.chunkId = Date.now();
+                    
+                    // Create header with chunk info
+                    const header = document.createElement('div');
+                    header.className = 'caption-chunk-header';
+                    
+                    const chunkNumber = document.querySelectorAll('.caption-chunk').length + 1;
+                    const maxDuration = Math.max(...alignment.char_durations_ms);
+                    const totalDuration = alignment.char_durations_ms.reduce((sum, duration) => sum + duration, 0);
+                    
+                    header.innerHTML = `
+                        <div class="chunk-info">Chunk ${chunkNumber}: ${alignment.chars.length} characters</div>
+                        <div class="chunk-timing">Max: ${maxDuration}ms | Total: ${totalDuration}ms</div>
+                    `;
+                    captionContainer.appendChild(header);
+                    
+                    // Create caption text container
+                    const textContainer = document.createElement('div');
+                    textContainer.className = 'caption-text';
+                    
+                    // Display all characters with their timing data
+                    alignment.chars.forEach((char, index) => {
+                        const charSpan = document.createElement('span');
+                        charSpan.className = 'caption-char';
+                        charSpan.textContent = char;
+                        charSpan.dataset.index = index;
+                        charSpan.dataset.startTime = alignment.char_start_times_ms[index];
+                        charSpan.dataset.duration = alignment.char_durations_ms[index];
+                        charSpan.dataset.chunkId = captionContainer.dataset.chunkId;
+                        
+                        // Add timing info as tooltip
+                        const startTime = alignment.char_start_times_ms[index];
+                        const duration = alignment.char_durations_ms[index];
+                        charSpan.title = `Start: ${startTime}ms, Duration: ${duration}ms`;
+                        
+                        textContainer.appendChild(charSpan);
+                    });
+                    
+                    captionContainer.appendChild(textContainer);
+                    
+                    // Add alignment data in collapsible section
+                    const alignmentSection = document.createElement('div');
+                    alignmentSection.className = 'alignment-data';
+                    alignmentSection.innerHTML = `
+                        <h6>📊 Character Alignment Data</h6>
+                        <pre>${JSON.stringify({
+                            chars: alignment.chars,
+                            char_start_times_ms: alignment.char_start_times_ms,
+                            char_durations_ms: alignment.char_durations_ms
+                        }, null, 2)}</pre>
+                    `;
+                    captionContainer.appendChild(alignmentSection);
+                    
+                    // Add the new chunk to captions
+                    this.captions.appendChild(captionContainer);
+                    
+                    // Update caption summary
+                    this.updateCaptionSummary();
+                    
+                    this.log(`Caption chunk ${chunkNumber} added: ${alignment.chars.length} characters with timing data`, 'success');
+                    
+                    // Store alignment data for synchronization
+                    if (!this.alignmentData) this.alignmentData = [];
+                    this.alignmentData.push({
+                        chunkId: captionContainer.dataset.chunkId,
+                        alignment: alignment,
+                        audioBase64: audioBase64
+                    });
+                    
+                } catch (error) {
+                    // If anything fails, log the error but don't crash
+                    this.log(`Error updating captions: ${error.message}`, 'error');
+                    console.error('Caption update failed:', error);
+                    console.log('Alignment data that failed:', alignment);
+                }
+            }
+
+            // Simplified alignment validation
+            validateAlignmentFormat(alignment) {
+                if (!alignment.chars || !Array.isArray(alignment.chars) ||
+                    !alignment.char_start_times_ms || !Array.isArray(alignment.char_start_times_ms) ||
+                    !alignment.char_durations_ms || !Array.isArray(alignment.char_durations_ms)) {
+                    this.log('⚠️ Basic alignment validation failed', 'warning');
+                    return false;
+                }
+                
+                if (alignment.chars.length !== alignment.char_start_times_ms.length ||
+                    alignment.chars.length !== alignment.char_durations_ms.length) {
+                    this.log('⚠️ Alignment array length mismatch', 'warning');
+                    return false;
+                }
+                
+                this.log(`✅ Alignment validation passed: ${alignment.chars.length} characters`, 'success');
+                return true;
+            }
+
+            startCharacterHighlighting(alignment, chunkNumber) {
+                // Don't start highlighting immediately - wait for audio playback
+                // This will be called when audio actually starts playing
+                this.log(`Character highlighting prepared for chunk ${chunkNumber}`, 'info');
+            }
+
+            // New method: Synchronize character highlighting with actual audio playback
+            syncCharacterHighlightingWithAudio(audioBuffer, alignment, chunkId) {
+                if (!alignment || !alignment.chars) return;
+                
+                const chars = alignment.chars;
+                const startTimes = alignment.char_start_times_ms;
+                const durations = alignment.char_durations_ms;
+                
+                // Clear any existing highlighting for this chunk
+                this.clearChunkHighlighting(chunkId);
+                
+                // Calculate the actual start time for this audio buffer
+                const audioStartTime = Date.now();
+                const audioDurationMs = audioBuffer.duration * 1000;
+                
+                // Scale alignment times to match actual audio duration
+                const scaleFactor = audioDurationMs / Math.max(...startTimes) || 1;
+                
+                // Schedule character highlighting based on actual audio timing
+                chars.forEach((char, index) => {
+                    const scaledStartTime = startTimes[index] * scaleFactor;
+                    const scaledDuration = durations[index] * scaleFactor;
+                    
+                    // Schedule the start of highlighting
+                    setTimeout(() => {
+                        this.highlightCharacter(chunkId, index, 'playing');
+                    }, scaledStartTime);
+                    
+                    // Schedule the end of highlighting (mark as played)
+                    setTimeout(() => {
+                        this.highlightCharacter(chunkId, index, 'played');
+                    }, scaledStartTime + scaledDuration);
+                });
+                
+                this.log(`Character highlighting synchronized for chunk ${chunkId} - ${audioDurationMs}ms duration`, 'info');
+            }
+
+            // Helper method to highlight a specific character
+            highlightCharacter(chunkId, charIndex, state) {
+                if (!chunkId || charIndex === undefined) {
+                    this.log('Warning: Invalid parameters for character highlighting', 'warning');
+                    return;
+                }
+                
+                const chunk = document.querySelector(`[data-chunk-id="${chunkId}"]`);
+                if (!chunk) {
+                    this.log(`Warning: Chunk ${chunkId} not found for highlighting`, 'warning');
+                    return;
+                }
+                
+                const charSpan = chunk.querySelector(`[data-index="${charIndex}"]`);
+                if (!charSpan) {
+                    this.log(`Warning: Character ${charIndex} not found in chunk ${chunkId}`, 'warning');
+                    return;
+                }
+                
+                // Remove all existing states
+                charSpan.classList.remove('active', 'playing', 'played');
+                
+                // Add new state
+                if (state === 'active') {
+                    charSpan.classList.add('active');
+                } else if (state === 'playing') {
+                    charSpan.classList.add('playing');
+                    // Scroll to keep active character visible
+                    charSpan.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } else if (state === 'played') {
+                    charSpan.classList.add('played');
+                }
+            }
+
+            // Helper method to clear highlighting for a chunk
+            clearChunkHighlighting(chunkId) {
+                if (!chunkId) {
+                    this.log('Warning: Invalid chunk ID for clearing highlighting', 'warning');
+                    return;
+                }
+                
+                const chunk = document.querySelector(`[data-chunk-id="${chunkId}"]`);
+                if (!chunk) {
+                    this.log(`Warning: Chunk ${chunkId} not found for clearing highlighting`, 'warning');
+                    return;
+                }
+                
+                chunk.querySelectorAll('.caption-char').forEach(charSpan => {
+                    charSpan.classList.remove('active', 'playing', 'played');
+                });
+            }
+
+            // Update the audio processing to use synchronized highlighting
             async processAudioChunk(audioBase64, alignment) {
                 try {
                     this.log(`Processing audio chunk: ${audioBase64.length} Base64 characters`, 'info');
@@ -655,10 +1173,14 @@
                     const durationMs = Math.round(audioBuffer.duration * 1000);
                     this.currentDuration.textContent = durationMs;
                     
+                    // Find the corresponding chunk ID for this alignment
+                    const chunkId = this.findChunkIdForAlignment(alignment);
+                    
                     // Add to audio queue for immediate playback
                     this.audioQueue.push({
                         buffer: audioBuffer,
                         alignment: alignment,
+                        chunkId: chunkId,
                         timestamp: Date.now()
                     });
                     
@@ -682,9 +1204,103 @@
                     this.updateCaptions(alignment);
                     
                     // Update duration display with estimated duration
-                    const estimatedDuration = Math.round((audioBase64.length * 0.75) / 88.2); // Rough estimate: bytes / (44.1kHz * 2 bytes/sample)
+                    const estimatedDuration = Math.round((audioBase64.length * 0.75) / 88.2);
                     this.currentDuration.textContent = estimatedDuration;
                 }
+            }
+
+            // Helper method to find chunk ID for alignment data
+            findChunkIdForAlignment(alignment) {
+                if (!this.alignmentData) return null;
+                
+                // Find the most recent alignment data that matches
+                for (let i = this.alignmentData.length - 1; i >= 0; i--) {
+                    const data = this.alignmentData[i];
+                    if (data.alignment === alignment || 
+                        (data.alignment.chars && 
+                         data.alignment.chars.length === alignment.chars.length &&
+                         data.alignment.chars.join('') === alignment.chars.join(''))) {
+                        return data.chunkId;
+                    }
+                }
+                return null;
+            }
+
+            // Update the audio playback to use synchronized highlighting
+            playNextAudio() {
+                if (this.audioQueue.length === 0) {
+                    this.currentAudioSource = null;
+                    this.audioStatus.textContent = 'Ready';
+                    return;
+                }
+                
+                const audioItem = this.audioQueue.shift();
+                this.currentAudioSource = this.audioContext.createBufferSource();
+                this.currentAudioSource.buffer = audioItem.buffer;
+                
+                // Start synchronized character highlighting when audio starts
+                if (audioItem.alignment && audioItem.chunkId) {
+                    this.syncCharacterHighlightingWithAudio(
+                        audioItem.buffer, 
+                        audioItem.alignment, 
+                        audioItem.chunkId
+                    );
+                }
+                
+                this.currentAudioSource.onended = () => {
+                    this.currentAudioSource = null;
+                    this.playNextAudio();
+                };
+                
+                this.currentAudioSource.connect(this.audioContext.destination);
+                this.currentAudioSource.start();
+                
+                this.audioStatus.textContent = 'Playing';
+                this.log(`Playing audio chunk (${Math.round(audioItem.buffer.duration * 1000)}ms)`, 'info');
+            }
+
+            // Add method to update caption summary
+            updateCaptionSummary() {
+                const summaryPanel = document.getElementById('captionSummary');
+                if (!summaryPanel) {
+                    this.log('Warning: Caption summary element not found', 'warning');
+                    return;
+                }
+                
+                const chunks = document.querySelectorAll('.caption-chunk');
+                const totalChunks = chunks.length;
+                let totalCharacters = 0;
+                
+                chunks.forEach(chunk => {
+                    const chars = chunk.querySelectorAll('.caption-char');
+                    totalCharacters += chars.length;
+                });
+                
+                if (totalChunks === 0) {
+                    summaryPanel.innerHTML = '<span>No captions yet</span>';
+                } else {
+                    summaryPanel.innerHTML = `
+                        <span>📊 ${totalChunks} chunks | 📝 ${totalCharacters} characters</span>
+                    `;
+                }
+            }
+
+            // Add method to clear all captions
+            clearAllCaptions() {
+                if (!this.captions) {
+                    this.log('Error: Captions element not found', 'error');
+                    return;
+                }
+                
+                this.captions.innerHTML = `
+                    <div class="empty-state">
+                        <p>🎬 Captions will appear here as audio is generated...</p>
+                        <small>Characters will highlight in real-time based on audio playback</small>
+                    </div>
+                `;
+                this.updateCaptionSummary();
+                this.alignmentData = [];
+                this.log('All caption chunks cleared', 'info');
             }
 
             async createAudioBufferFromPCM(pcmData) {
@@ -1110,7 +1726,6 @@
                 }
                 
                 this.isStreaming = true;
-                this.receivedAudioChunks = 0; // Reset counter for new streaming session
                 this.streamBtn.disabled = true;
                 this.typingIndicator.style.display = 'inline-block';
                 this.log('Starting specification-compliant text streaming...', 'info');
@@ -1145,7 +1760,7 @@
             streamTextInChunksSpecification(text) {
                 // According to specification:
                 // 1. First chunk: single space character
-                // 2. Text chunks: actual content
+                // 2. Text chunks: actual content (streamed continuously)
                 // 3. Final chunk: empty string to close
                 
                 const chunkSize = 10; // Smaller chunks for better streaming
@@ -1156,66 +1771,26 @@
                     chunks.push(text.slice(i, i + chunkSize));
                 }
                 
-                let chunkIndex = 0;
-                let expectedAudioChunks = 0;
-                let receivedAudioChunks = 0;
-                
                 this.log(`Starting specification-compliant streaming: ${chunks.length} chunks of size ${chunkSize}`, 'info');
                 this.log(`Text: "${text}"`, 'info');
                 this.log(`Chunks: [${chunks.map((c, i) => `"${c}"`).join(', ')}]`, 'info');
                 
-                const streamInterval = setInterval(() => {
-                    if (chunkIndex === 0) {
-                        // Step 1: Send initial space character (first chunk from client)
-                        this.sendWebSocketMessage(" ", false);
-                        this.log('Sent initial space character (first chunk)', 'info');
-                        this.updateSpecificationStatus('initial_space', '✅', 'Initial space sent');
-                        chunkIndex++;
-                    } else if (chunkIndex <= chunks.length) {
-                        // Step 2: Send text chunks
-                        const chunk = chunks[chunkIndex - 1];
-                        this.sendWebSocketMessage(chunk, false);
-                        this.log(`Sent text chunk ${chunkIndex}/${chunks.length}: "${chunk}"`, 'info');
-                        expectedAudioChunks++; // Expect one audio chunk per text chunk
-                        chunkIndex++;
-                        
-                        // If this was the last text chunk, wait for all audio chunks before closing
-                        if (chunkIndex > chunks.length) {
-                            this.log(`All text chunks sent. Waiting for ${expectedAudioChunks} audio chunks...`, 'info');
-                            
-                            // Set a maximum wait time to prevent infinite waiting
-                            const maxWaitTime = 10000; // 10 seconds
-                            const startWaitTime = Date.now();
-                            
-                            // Check if we've received all expected audio chunks
-                            const checkCompletion = () => {
-                                const elapsed = Date.now() - startWaitTime;
-                                
-                                if (receivedAudioChunks >= expectedAudioChunks) {
-                                    this.log('All audio chunks received, closing connection...', 'info');
-                                    // Step 3: Send final chunk (empty string to close) AFTER all processing
-                                    this.sendWebSocketMessage("", false);
-                                    this.log('Sent final chunk (empty string to close) - all processing complete', 'info');
-                                    clearInterval(streamInterval);
-                                    this.stopStreaming();
-                                } else if (elapsed > maxWaitTime) {
-                                    this.log(`Timeout reached (${maxWaitTime}ms). Closing connection with ${receivedAudioChunks}/${expectedAudioChunks} chunks received.`, 'warning');
-                                    // Force close after timeout
-                                    this.sendWebSocketMessage("", false);
-                                    this.log('Sent final chunk (empty string to close) - timeout reached', 'info');
-                                    clearInterval(streamInterval);
-                                    this.stopStreaming();
-                                } else {
-                                    // Wait a bit more and check again
-                                    setTimeout(checkCompletion, 200);
-                                }
-                            };
-                            
-                            // Start checking for completion
-                            setTimeout(checkCompletion, 500);
-                        }
-                    }
-                }, 150); // Send chunk every 150ms for natural streaming
+                // Step 1: Send initial space character immediately
+                this.sendWebSocketMessage(" ", false);
+                this.log('Sent initial space character (first chunk)', 'info');
+                this.updateSpecificationStatus('initial_space', '✅', 'Initial space sent');
+                
+                // Step 2: Stream ALL text chunks immediately without waiting
+                chunks.forEach((chunk, index) => {
+                    this.sendWebSocketMessage(chunk, false);
+                    this.log(`Streaming text chunk ${index + 1}/${chunks.length}: "${chunk}"`, 'info');
+                });
+                
+                // Step 3: Send final chunk immediately after all text chunks
+                this.log('All text chunks streamed. Closing connection...', 'info');
+                this.sendWebSocketMessage("", false);
+                this.log('Sent final chunk (empty string to close)', 'info');
+                this.stopStreaming();
             }
 
             flushBuffer() {
@@ -1247,7 +1822,6 @@
 
             stopStreaming() {
                 this.isStreaming = false;
-                this.receivedAudioChunks = 0; // Reset counter
                 this.streamBtn.disabled = false;
                 this.typingIndicator.style.display = 'none';
                 
@@ -1310,28 +1884,55 @@
             }
 
             log(message, type = 'info') {
-                const logEntry = document.createElement('div');
-                logEntry.className = `log-entry log-${type}`;
-                
-                const timestamp = new Date().toLocaleTimeString();
-                logEntry.textContent = `[${timestamp}] ${message}`;
-                
-                this.logContainer.appendChild(logEntry);
-                this.logContainer.scrollTop = this.logContainer.scrollHeight;
-                
-                // Keep only last 100 log entries
-                while (this.logContainer.children.length > 100) {
-                    this.logContainer.removeChild(this.logContainer.firstChild);
-                }
-                
-                // Also log to console
+                // Always log to console first (this will always work)
                 console.log(`[${type.toUpperCase()}] ${message}`);
+                
+                // Try to log to DOM if available, but don't fail if it's not
+                try {
+                    if (this.logContainer && this.logContainer.appendChild) {
+                        const logEntry = document.createElement('div');
+                        logEntry.className = `log-entry log-${type}`;
+                        
+                        const timestamp = new Date().toLocaleTimeString();
+                        logEntry.textContent = `[${timestamp}] ${message}`;
+                        
+                        this.logContainer.appendChild(logEntry);
+                        this.logContainer.scrollTop = this.logContainer.scrollHeight;
+                        
+                        // Keep only last 100 log entries
+                        while (this.logContainer.children.length > 100) {
+                            this.logContainer.removeChild(this.logContainer.firstChild);
+                        }
+                    }
+                } catch (error) {
+                    // If DOM logging fails, just continue with console logging
+                    console.warn('DOM logging failed, continuing with console only:', error);
+                }
             }
         }
 
         // Initialize the client when the page loads
         document.addEventListener('DOMContentLoaded', () => {
-            new TTSWebSocketClient();
+            try {
+                // Test DOM elements before creating client
+                console.log('=== DOM Ready Test ===');
+                const testCaptions = document.getElementById('captions');
+                console.log('Test captions element:', testCaptions);
+                console.log('Test captions element type:', typeof testCaptions);
+                console.log('Test captions element nodeType:', testCaptions ? testCaptions.nodeType : 'null');
+                console.log('=== End DOM Test ===');
+                
+                const client = new TTSWebSocketClient();
+                
+                // Verify client initialization
+                if (client && client.captions) {
+                    console.log('TTS WebSocket Client initialized successfully');
+                } else {
+                    console.error('TTS WebSocket Client initialization failed');
+                }
+            } catch (error) {
+                console.error('Failed to initialize TTS WebSocket Client:', error);
+            }
         });
     </script>
 </body>

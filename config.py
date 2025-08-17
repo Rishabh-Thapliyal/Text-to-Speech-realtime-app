@@ -104,7 +104,7 @@ WEBSOCKET_CONFIG = {
         "min_text_length": 50,  # Increased to 50 for better audio quality
         "chunk_size": 25,  # Smaller chunks for lower latency
         "preemptive_generation": True,  # Start generating audio before full text
-        "streaming_threshold": 0.1,  # Start streaming after 100ms of silence
+        "streaming_threshold": 0.05,  # Start streaming after 100ms of silence
     }
 }
 
