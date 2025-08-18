@@ -22,6 +22,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import torch
 import torchaudio as ta
 import soundfile as sf
@@ -69,6 +71,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files for frontend
+try:
+    app.mount("/static", StaticFiles(directory="../frontend"), name="static")
+    logger.info("Static files mounted from ../frontend directory")
+except Exception as e:
+    logger.warning(f"Could not mount static files: {e}")
+    # Fallback: try relative path
+    try:
+        app.mount("/static", StaticFiles(directory="frontend"), name="static")
+        logger.info("Static files mounted from frontend directory")
+    except Exception as e2:
+        logger.warning(f"Could not mount static files from frontend directory: {e2}")
 
 class TTSManager:
     def __init__(self):
@@ -1134,14 +1149,35 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.get("/")
 async def root():
-    """Root endpoint"""
-    return {
-        "message": "SigIQ TTS WebSocket API",
-        "endpoints": {
-            "websocket": "/ws/tts",
-            "docs": "/docs"
-        }
-    }
+    """Serve the main frontend page"""
+    try:
+        # Try to serve index.html from frontend directory
+        return FileResponse("frontend/index.html")
+    except FileNotFoundError:
+        try:
+            # Fallback: try relative path
+            return FileResponse("../frontend/index.html")
+        except FileNotFoundError:
+            # Final fallback: return API info
+            return {
+                "message": "SigIQ TTS WebSocket API",
+                "endpoints": {
+                    "websocket": "/ws/tts",
+                    "docs": "/docs"
+                },
+                "note": "Frontend files not found. Check if frontend/index.html exists."
+            }
+
+@app.get("/frontend")
+async def serve_frontend():
+    """Serve the frontend page"""
+    try:
+        return FileResponse("frontend/index.html")
+    except FileNotFoundError:
+        try:
+            return FileResponse("../frontend/index.html")
+        except FileNotFoundError:
+            return {"error": "Frontend files not found"}
 
 @app.get("/health")
 async def health_check():
