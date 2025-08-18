@@ -676,6 +676,43 @@ def create_simple_frontend():
     print(f"   File size: {os.path.getsize('frontend/index.html')} bytes")
     print(f"   Full path: {os.path.abspath('frontend/index.html')}")
 
+def verify_frontend_files():
+    """Verify that frontend files exist and are accessible"""
+    print("\n🔍 Verifying frontend files...")
+    
+    required_files = [
+        "frontend/index.html",
+        "test_tts.html"
+    ]
+    
+    all_exist = True
+    for file_path in required_files:
+        if os.path.exists(file_path):
+            file_size = os.path.getsize(file_path)
+            print(f"✅ {file_path} - {file_size} bytes")
+            
+            # Try to read the file to ensure it's accessible
+            try:
+                with open(file_path, 'r') as f:
+                    content = f.read(100)  # Read first 100 characters
+                    if "<html" in content.lower():
+                        print(f"   ✓ Valid HTML file")
+                    else:
+                        print(f"   ⚠️  File exists but may not be HTML")
+            except Exception as e:
+                print(f"   ❌ Error reading file: {e}")
+                all_exist = False
+        else:
+            print(f"❌ {file_path} - Missing!")
+            all_exist = False
+    
+    if all_exist:
+        print("✅ All frontend files verified and accessible!")
+        return True
+    else:
+        print("❌ Some frontend files are missing or inaccessible!")
+        return False
+
 def main():
     """Main deployment function"""
     print("🚀 Starting TTS App Deployment on Google Colab...")
@@ -693,33 +730,29 @@ def main():
         # Step 3: Install ngrok
         install_ngrok()
         
-        # Step 4: Start TTS server
+        # Step 4: Create frontend files FIRST (before starting server)
+        print("\n📄 Creating frontend files...")
+        create_simple_frontend()
+        create_test_interface()
+        
+        # Step 4.5: Verify frontend files exist and are accessible
+        if not verify_frontend_files():
+            print("❌ Frontend files verification failed")
+            return False
+        
+        # Step 5: Start TTS server (now with frontend files available)
         if not start_tts_server():
             print("❌ Failed to start TTS server")
             return False
         
-        # Step 4.5: Create frontend files first
-        create_simple_frontend()
-        
-        # Step 4.6: Restart server to ensure frontend is served
-        if not restart_tts_server():
-            print("❌ Failed to restart TTS server with frontend configuration")
-            return False
-        
-        # Step 5: Create ngrok tunnel
+        # Step 6: Create ngrok tunnel
         public_url = create_ngrok_tunnel()
         if not public_url:
             print("❌ Failed to create ngrok tunnel")
             return False
         
-        # Step 6: Test frontend access
+        # Step 7: Test frontend access
         test_frontend_access(public_url)
-        
-        # Step 7: Create test interface
-        create_test_interface()
-
-        # Step 8: Create simple frontend
-        create_simple_frontend()
         
         # Final output
         print("\n" + "=" * 70)
