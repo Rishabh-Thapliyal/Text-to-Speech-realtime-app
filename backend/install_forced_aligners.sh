@@ -21,9 +21,7 @@ pip install --upgrade pip
 echo "🎯 Installing Montreal Forced Aligner (MFA)..."
 pip install montreal-forced-aligner
 
-# Install aeneas (alternative forced aligner)
-echo "🔧 Installing aeneas forced aligner..."
-pip install aeneas
+
 
 # Install praatio for TextGrid parsing
 echo "📊 Installing praatio for TextGrid parsing..."
@@ -43,7 +41,6 @@ echo "✅ Installation complete!"
 echo ""
 echo "🔧 Available Forced Alignment Tools:"
 echo "   • Montreal Forced Aligner (MFA) - Primary tool"
-echo "   • aeneas - Alternative forced aligner"
 echo "   • praatio - TextGrid parsing"
 echo ""
 echo "📖 Usage:"

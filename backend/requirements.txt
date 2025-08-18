@@ -13,5 +13,5 @@ soundfile>=0.12.1
 librosa>=0.10.0
 scipy>=1.10.0
 montreal-forced-aligner>=1.1.0
-aeneas>=1.7.3
+
 praatio>=6.0.0

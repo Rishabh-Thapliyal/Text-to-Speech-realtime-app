@@ -630,9 +630,9 @@ class TTSManager:
                     logger.info("Forced alignment successful")
                     return alignments
             
-            # Fallback to MFA-based alignment if no audio data
-            logger.info("Using MFA-based alignment...")
-            return self._mfa_align_text(text, audio_duration_ms)
+            # Fallback to basic alignment if no audio data
+            logger.info("Using basic alignment...")
+            return self._basic_character_alignment(text, audio_duration_ms)
             
         except Exception as e:
             logger.error(f"Forced alignment failed: {e}")
@@ -682,118 +682,18 @@ class TTSManager:
                 return alignments
                 
         except ImportError:
-            logger.warning("MFA not available, trying alternative forced aligner...")
-            return self._aeneas_align_text_audio(text, audio_data)
+            logger.warning("MFA not available, falling back to basic alignment...")
+            return self._basic_character_alignment(text, audio_duration_ms)
         except Exception as e:
             logger.error(f"MFA alignment failed: {e}")
-            return None
-    
-    def _aeneas_align_text_audio(self, text: str, audio_data: bytes) -> Optional[Dict]:
-        """Use aeneas as alternative forced aligner"""
-        try:
-            import tempfile
-            import os
-            from aeneas.tools.execute_task import ExecuteTaskCLI
-            
-            logger.info("Using aeneas forced aligner...")
-            
-            with tempfile.TemporaryDirectory() as temp_dir:
-                # Save audio and text files
-                audio_path = os.path.join(temp_dir, "audio.wav")
-                text_path = os.path.join(temp_dir, "text.txt")
-                
-                self._save_audio_as_wav(audio_data, audio_path)
-                with open(text_path, 'w', encoding='utf-8') as f:
-                    f.write(text)
-                
-                # Run aeneas alignment
-                cmd = [
-                    "python", "-m", "aeneas.tools.execute_task",
-                    audio_path,
-                    text_path,
-                    "task_language=eng",
-                    "task_adjust_boundary_algorithm=percent",
-                    "task_adjust_boundary_percent_value=50",
-                    f"task_output_path={os.path.join(temp_dir, 'output.txt')}",
-                    "task_output_format=json"
-                ]
-                
-                import subprocess
-                result = subprocess.run(cmd, capture_output=True, text=True, cwd=temp_dir)
-                
-                if result.returncode == 0:
-                    # Parse aeneas output
-                    alignments = self._parse_aeneas_output(temp_dir, text)
-                    return alignments
-                else:
-                    logger.error(f"Aeneas alignment failed: {result.stderr}")
-                    return None
-                    
-        except Exception as e:
-            logger.error(f"Aeneas alignment failed: {e}")
-            return None
-    
-    def _mfa_align_text(self, text: str, audio_duration_ms: float) -> Dict:
-        """MFA-based alignment using text analysis and duration estimation"""
-        try:
-            from montreal_forced_aligner.models import AcousticModel
-            from montreal_forced_aligner.helper import load_configuration
-            
-            logger.info("Using MFA acoustic model for text analysis...")
-            
-            # Load English acoustic model
-            config = load_configuration()
-            acoustic_model = AcousticModel("english", config)
-            
-            # Get phoneme-level alignments
-            phonemes = acoustic_model.text_to_phonemes(text)
-            
-            # Convert phonemes to character-level timing
-            alignments = self._phonemes_to_char_alignments(text, phonemes, audio_duration_ms)
-            return alignments
-            
-        except Exception as e:
-            logger.error(f"MFA text analysis failed: {e}")
+            logger.warning("Falling back to basic alignment...")
             return self._basic_character_alignment(text, audio_duration_ms)
     
-    def _phonemes_to_char_alignments(self, text: str, phonemes: list, audio_duration_ms: float) -> Dict:
-        """Convert phoneme-level alignments to character-level timing"""
-        try:
-            chars = list(text)
-            char_start_times = []
-            char_durations = []
-            
-            # Simple phoneme-to-character mapping
-            # This is a basic implementation - in practice, you'd want more sophisticated mapping
-            total_phonemes = len(phonemes)
-            if total_phonemes > 0:
-                phoneme_duration = audio_duration_ms / total_phonemes
-                
-                for i, phoneme in enumerate(phonemes):
-                    # Map phoneme to characters (simplified)
-                    char_start = i * phoneme_duration
-                    char_duration = phoneme_duration
-                    
-                    # Find corresponding characters in text
-                    char_idx = min(i, len(chars) - 1)
-                    if char_idx < len(chars):
-                        char_start_times.append(int(char_start))
-                        char_durations.append(int(char_duration))
-            
-            # Ensure we have alignments for all characters
-            while len(char_start_times) < len(chars):
-                char_start_times.append(0)
-                char_durations.append(0)
-            
-            return {
-                "chars": chars,
-                "char_start_times_ms": char_start_times[:len(chars)],
-                "char_durations_ms": char_durations[:len(chars)]
-            }
-            
-        except Exception as e:
-            logger.error(f"Phoneme to character conversion failed: {e}")
-            return self._basic_character_alignment(text, audio_duration_ms)
+
+    
+
+    
+
     
     def _parse_mfa_output(self, temp_dir: str, text: str) -> Dict:
         """Parse MFA alignment output files"""
@@ -831,44 +731,7 @@ class TTSManager:
             logger.error(f"Failed to parse MFA output: {e}")
             return None
     
-    def _parse_aeneas_output(self, temp_dir: str, text: str) -> Dict:
-        """Parse aeneas alignment output"""
-        try:
-            import json
-            import os
-            
-            output_path = os.path.join(temp_dir, 'output.txt')
-            with open(output_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            # Extract fragment alignments
-            fragments = data.get('fragments', [])
-            char_alignments = []
-            chars = list(text)
-            char_idx = 0
-            
-            for fragment in fragments:
-                start_time = fragment['begin'] * 1000  # Convert to ms
-                end_time = fragment['end'] * 1000
-                fragment_text = fragment['lines'][0]
-                
-                # Map fragment text to characters
-                for char in fragment_text:
-                    if char_idx < len(chars) and chars[char_idx] == char:
-                        char_alignments.append({
-                            'char': char,
-                            'start': start_time,
-                            'end': end_time
-                        })
-                        char_idx += 1
-            
-            # Convert to required format
-            alignments = self._char_alignments_to_format(char_alignments)
-            return alignments
-            
-        except Exception as e:
-            logger.error(f"Failed to parse aeneas output: {e}")
-            return None
+
     
     def _words_to_char_alignments(self, text: str, word_alignments: list) -> Dict:
         """Convert word-level alignments to character-level"""
