@@ -1179,6 +1179,28 @@ async def serve_frontend():
         except FileNotFoundError:
             return {"error": "Frontend files not found"}
 
+@app.get("/test")
+async def serve_test():
+    """Serve the test page"""
+    try:
+        return FileResponse("test_tts.html")
+    except FileNotFoundError:
+        try:
+            return FileResponse("../test_tts.html")
+        except FileNotFoundError:
+            return {"error": "Test file not found"}
+
+@app.get("/test_tts.html")
+async def serve_test_html():
+    """Serve the test HTML file directly"""
+    try:
+        return FileResponse("test_tts.html")
+    except FileNotFoundError:
+        try:
+            return FileResponse("../test_tts.html")
+        except FileNotFoundError:
+            return {"error": "Test HTML file not found"}
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""

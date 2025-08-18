@@ -107,6 +107,29 @@ def check_file_structure():
             print(f"❌ Missing: {file_path}")
         else:
             print(f"✅ Found: {file_path}")
+            # Show file size and permissions
+            stat = os.stat(file_path)
+            print(f"   Size: {stat.st_size} bytes, Permissions: {oct(stat.st_mode)[-3:]}")
+    
+    # Check current working directory
+    print(f"\n📍 Current working directory: {os.getcwd()}")
+    
+    # List all files in current directory
+    print("📂 Files in current directory:")
+    for item in os.listdir("."):
+        if os.path.isdir(item):
+            print(f"   📁 {item}/")
+        else:
+            print(f"   📄 {item}")
+    
+    # List files in frontend directory
+    if os.path.exists("frontend"):
+        print("\n📂 Files in frontend directory:")
+        for item in os.listdir("frontend"):
+            if os.path.isdir(item):
+                print(f"   📁 {item}/")
+            else:
+                print(f"   📄 {item}")
     
     if missing_files:
         print(f"\n⚠️  Missing files: {missing_files}")
@@ -151,6 +174,67 @@ def start_tts_server():
     except requests.exceptions.RequestException as e:
         print(f"⚠️  Server might still be starting up: {e}")
         print("   Check server.log for details")
+    
+    # Go back to root directory
+    os.chdir("..")
+    
+    return True
+
+def restart_tts_server():
+    """Restart the TTS server to ensure proper configuration"""
+    print("\n🔄 Restarting TTS server with updated configuration...")
+    
+    # Kill any existing Python processes on port 8001
+    run_command("pkill -f 'python.*main.py'", "Killing existing TTS server processes", check=False)
+    run_command("pkill -f 'uvicorn.*main:app'", "Killing existing uvicorn processes", check=False)
+    
+    # Wait for processes to stop
+    time.sleep(3)
+    
+    # Change to backend directory and start server
+    os.chdir("backend")
+    
+    # Start server in background with proper logging
+    server_cmd = "python main.py > ../server.log 2>&1 &"
+    run_command(server_cmd, "Starting TTS server in background", check=False)
+    
+    # Wait for server to start
+    print("⏳ Waiting for server to start...")
+    time.sleep(20)  # Increased wait time
+    
+    # Check if server is running
+    max_attempts = 5
+    for attempt in range(max_attempts):
+        try:
+            response = requests.get("http://localhost:8001/health", timeout=10)
+            if response.status_code == 200:
+                print("✅ TTS server is running on port 8001!")
+                server_info = response.json()
+                print(f"   Status: {server_info.get('status', 'unknown')}")
+                print(f"   TTS Engine: {server_info.get('tts_engine', {}).get('model_type', 'unknown')}")
+                
+                # Test if frontend files are accessible
+                try:
+                    frontend_response = requests.get("http://localhost:8001/", timeout=5)
+                    if frontend_response.status_code == 200:
+                        print("✅ Frontend is accessible at root URL!")
+                    else:
+                        print(f"⚠️  Frontend not accessible: {frontend_response.status_code}")
+                except:
+                    print("⚠️  Frontend test failed")
+                
+                break
+            else:
+                print(f"⚠️  Server responded but not healthy: {response.status_code}")
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️  Attempt {attempt + 1}/{max_attempts}: Server might still be starting up: {e}")
+            if attempt < max_attempts - 1:
+                print("   Waiting 5 more seconds...")
+                time.sleep(5)
+            else:
+                print("   Server failed to start after multiple attempts")
+                print("   Check server.log for details")
+                return False
     
     # Go back to root directory
     os.chdir("..")
@@ -389,6 +473,209 @@ def create_test_interface():
     
     print("✅ Test HTML file created: test_tts.html")
 
+def create_simple_frontend():
+    """Create a simple frontend HTML file for testing"""
+    print("\n📄 Creating simple frontend HTML file...")
+    
+    # Create frontend directory if it doesn't exist
+    os.makedirs("frontend", exist_ok=True)
+    
+    html_content = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TTS Realtime App</title>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f0f2f5; }
+        .container { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { color: #1a73e8; margin-bottom: 10px; }
+        .header p { color: #5f6368; font-size: 18px; }
+        .test-section { margin: 25px 0; padding: 25px; border: 2px solid #e8eaed; border-radius: 10px; background: #fafbfc; }
+        .test-section h3 { color: #202124; margin-top: 0; border-bottom: 2px solid #1a73e8; padding-bottom: 10px; }
+        button { padding: 15px 30px; margin: 10px 5px; background: #1a73e8; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 500; transition: background 0.3s; }
+        button:hover { background: #1557b0; }
+        button:active { transform: translateY(1px); }
+        input, textarea { width: 100%; padding: 15px; margin: 10px 0; border: 2px solid #e8eaed; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
+        input:focus, textarea:focus { outline: none; border-color: #1a73e8; box-shadow: 0 0 0 3px rgba(26,115,232,0.1); }
+        .status { padding: 15px; margin: 15px 0; border-radius: 8px; font-weight: 500; }
+        .success { background: #e6f4ea; color: #137333; border: 1px solid #34a853; }
+        .error { background: #fce8e6; color: #c5221f; border: 1px solid #ea4335; }
+        .info { background: #e8f0fe; color: #174ea6; border: 1px solid #4285f4; }
+        .audio-player { margin-top: 20px; width: 100%; }
+        .url-links { display: flex; gap: 15px; flex-wrap: wrap; margin-top: 15px; }
+        .url-links a { padding: 10px 20px; background: #f1f3f4; color: #1a73e8; text-decoration: none; border-radius: 6px; font-weight: 500; transition: background 0.3s; }
+        .url-links a:hover { background: #e8eaed; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎤 TTS Realtime App</h1>
+            <p>Text-to-Speech Application Running on Google Colab</p>
+        </div>
+        
+        <div class="test-section">
+            <h3>🔗 Connection Test</h3>
+            <button onclick="testConnection()">Test Server Connection</button>
+            <div id="connectionStatus"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🎵 Text-to-Speech Test</h3>
+            <textarea id="testText" rows="4" placeholder="Enter text to convert to speech...">Hello, this is a test of the TTS system running on Google Colab!</textarea>
+            <br>
+            <button onclick="testTTS()">Generate Speech</button>
+            <div id="ttsStatus"></div>
+            <audio id="audioPlayer" controls class="audio-player" style="display: none;"></audio>
+        </div>
+        
+        <div class="test-section">
+            <h3>📊 Server Information</h3>
+            <button onclick="getServerInfo()">Get Server Information</button>
+            <div id="serverInfo"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🌐 Access URLs</h3>
+            <p>Use these links to access different parts of your app:</p>
+            <div class="url-links">
+                <a href="/" target="_blank">🏠 Main App (Root)</a>
+                <a href="/frontend" target="_blank">📱 Frontend Endpoint</a>
+                <a href="/test" target="_blank">🧪 Test Interface</a>
+                <a href="/docs" target="_blank">📚 API Documentation</a>
+                <a href="/health" target="_blank">💚 Health Check</a>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🔧 WebSocket Test</h3>
+            <button onclick="testWebSocket()">Test WebSocket Connection</button>
+            <div id="websocketStatus"></div>
+        </div>
+    </div>
+
+    <script>
+        const SERVER_URL = window.location.origin;
+        
+        async function testConnection() {
+            const statusDiv = document.getElementById('connectionStatus');
+            statusDiv.innerHTML = '<div class="info">Testing connection...</div>';
+            
+            try {
+                const response = await fetch(`${SERVER_URL}/health`);
+                if (response.ok) {
+                    const data = await response.json();
+                    statusDiv.innerHTML = `<div class="success">✅ Server is connected and responding!<br><strong>Status:</strong> ${data.status}<br><strong>TTS Engine:</strong> ${data.tts_engine?.model_type || 'Unknown'}<br><strong>Active Connections:</strong> ${data.active_connections || 0}</div>`;
+                } else {
+                    statusDiv.innerHTML = `<div class="error">❌ Server responded with error: ${response.status}</div>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="error">❌ Connection failed: ${error.message}</div>`;
+            }
+        }
+        
+        async function testTTS() {
+            const text = document.getElementById('testText').value;
+            const statusDiv = document.getElementById('ttsStatus');
+            const audioPlayer = document.getElementById('audioPlayer');
+            
+            if (!text.trim()) {
+                statusDiv.innerHTML = '<div class="error">❌ Please enter some text</div>';
+                return;
+            }
+            
+            statusDiv.innerHTML = '<div class="info">Generating speech...</div>';
+            
+            try {
+                const response = await fetch(`${SERVER_URL}/tts`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        text: text,
+                        model: 'chatterbox'
+                    })
+                });
+                
+                if (response.ok) {
+                    const audioBlob = await response.blob();
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    audioPlayer.src = audioUrl;
+                    audioPlayer.style.display = 'block';
+                    statusDiv.innerHTML = '<div class="success">✅ Speech generated successfully! Use the audio player above.</div>';
+                } else {
+                    const errorText = await response.text();
+                    statusDiv.innerHTML = `<div class="error">❌ TTS failed: ${errorText}</div>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="error">❌ TTS request failed: ${error.message}</div>`;
+            }
+        }
+        
+        async function getServerInfo() {
+            const statusDiv = document.getElementById('serverInfo');
+            statusDiv.innerHTML = '<div class="info">Getting server information...</div>';
+            
+            try {
+                const response = await fetch(`${SERVER_URL}/models`);
+                if (response.ok) {
+                    const info = await response.json();
+                    statusDiv.innerHTML = `<div class="success"><pre>${JSON.stringify(info, null, 2)}</pre></div>`;
+                } else {
+                    statusDiv.innerHTML = `<div class="error">❌ Could not get server info: ${response.status}</div>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="error">❌ Server info request failed: ${error.message}</div>`;
+            }
+        }
+        
+        function testWebSocket() {
+            const statusDiv = document.getElementById('websocketStatus');
+            statusDiv.innerHTML = '<div class="info">Testing WebSocket connection...</div>';
+            
+            try {
+                const ws = new WebSocket(`ws${window.location.protocol === 'https:' ? 's' : ''}://${window.location.host}/ws/tts`);
+                
+                ws.onopen = function() {
+                    statusDiv.innerHTML = '<div class="success">✅ WebSocket connection established!</div>';
+                    ws.close();
+                };
+                
+                ws.onerror = function(error) {
+                    statusDiv.innerHTML = '<div class="error">❌ WebSocket connection failed</div>';
+                };
+                
+                setTimeout(() => {
+                    if (ws.readyState === WebSocket.CONNECTING) {
+                        statusDiv.innerHTML = '<div class="error">❌ WebSocket connection timeout</div>';
+                        ws.close();
+                    }
+                }, 5000);
+                
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="error">❌ WebSocket test failed: ${error.message}</div>`;
+            }
+        }
+        
+        // Auto-test connection on page load
+        window.onload = function() {
+            setTimeout(testConnection, 1000);
+        };
+    </script>
+</body>
+</html>
+"""
+    
+    with open("frontend/index.html", "w") as f:
+        f.write(html_content)
+    
+    print("✅ Simple frontend HTML file created: frontend/index.html")
+    print(f"   File size: {os.path.getsize('frontend/index.html')} bytes")
+    print(f"   Full path: {os.path.abspath('frontend/index.html')}")
+
 def main():
     """Main deployment function"""
     print("🚀 Starting TTS App Deployment on Google Colab...")
@@ -411,6 +698,14 @@ def main():
             print("❌ Failed to start TTS server")
             return False
         
+        # Step 4.5: Create frontend files first
+        create_simple_frontend()
+        
+        # Step 4.6: Restart server to ensure frontend is served
+        if not restart_tts_server():
+            print("❌ Failed to restart TTS server with frontend configuration")
+            return False
+        
         # Step 5: Create ngrok tunnel
         public_url = create_ngrok_tunnel()
         if not public_url:
@@ -422,6 +717,9 @@ def main():
         
         # Step 7: Create test interface
         create_test_interface()
+
+        # Step 8: Create simple frontend
+        create_simple_frontend()
         
         # Final output
         print("\n" + "=" * 70)
@@ -450,6 +748,7 @@ def main():
         print("• server.log - TTS server logs")
         print("• ngrok.log - Ngrok tunnel logs")
         print("• test_tts.html - Test interface")
+        print("• frontend/index.html - Simple frontend for testing")
         
         print("\n🚀 Your TTS app with frontend is now live on Google Colab!")
         
