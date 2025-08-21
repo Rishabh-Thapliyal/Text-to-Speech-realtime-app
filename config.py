@@ -9,7 +9,7 @@ from typing import Dict, Any
 # TTS Engine Configuration
 TTS_CONFIG = {
     # Model selection: "kokoro" or "chatterbox"
-    "selected_model": "chatterbox",  # Default to chatterbox
+    "selected_model": "kokoro",  # Default to kokoro
     
     # Model configuration
     "model_name": "microsoft/speecht5_tts",  # Base model, replace with your Chatterbox model path
@@ -20,6 +20,8 @@ TTS_CONFIG = {
     
     # Volume level (0.0 to 1.0)
     "volume": 0.9,
+
+    "chunk_word_count": 20,
     
     # Voice ID (leave None for auto-selection)
     "voice_id": None,
@@ -30,7 +32,16 @@ TTS_CONFIG = {
         "volume": 0.9,
         "pitch": 1.0,
     },
-    
+    "alignment_type": "",
+
+    # Math speech options
+    "math_speech": {
+        "enabled": True,            # Enable math-to-speech preprocessing
+        "use_node_sre": False,      # Use Node MathJax+SRE if available
+        "style": "clearspeak",     # clearspeak | mathspeak
+        "timeout_ms": 6000,          # Max time to wait for Node pipeline
+    },
+
     # Chatterbox specific settings
     "chatterbox": {
         "use_local_weights": True,  # Use local Chatterbox model weights
@@ -49,6 +60,7 @@ TTS_CONFIG = {
         "enable_streaming": True,  # Enable real-time streaming
         "chunk_size": 50,  # Text chunk size for streaming
         "vocoder": "hifigan",  # Vocoder preference (handled internally by library)
+        "sampling_steps": 100,  # Reduce sampler steps for latency
     }
 }
 

@@ -557,6 +557,9 @@
                     <button id="disconnectBtn" class="btn btn-danger" disabled>
                         ❌ Disconnect
                     </button>
+                    <button id="reconnectBtn" class="btn btn-warning" disabled>
+                        🔄 Reconnect
+                    </button>
                 </div>
             </div>
 
@@ -566,8 +569,8 @@
                 <div style="margin: 15px 0;">
                     <label for="modelSelect">Select TTS Model:</label>
                     <select id="modelSelect" style="width: 200px; padding: 8px; margin-left: 10px; border: 1px solid #ccc; border-radius: 4px;">
+                        <option value="kokoro" selected>🟢 Kokoro TTS (Fast & Lightweight)</option>
                         <option value="chatterbox">🔵 Chatterbox TTS (High Quality)</option>
-                        <option value="kokoro">🟢 Kokoro TTS (Fast & Lightweight)</option>
                     </select>
                     <span id="modelStatus" class="model-status">Not Connected</span>
                 </div>
@@ -714,6 +717,6 @@
             </div>
         </div>
     </div>
-    <script type="module" src="./tts_client.js"></script>
+    <script type="module" src="./tts_client.js?v=2"></script>
 </body>
 </html>

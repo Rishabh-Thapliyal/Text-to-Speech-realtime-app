@@ -12,6 +12,9 @@ export class CaptionManager {
         if (!this.alignmentData || this.alignmentData.length === 0) {
             return null;
         }
+        
+        // For real-time streaming, we want to allow new chunks even if they have similar content
+        // Only prevent exact duplicates with identical text and very similar timing
         for (const data of this.alignmentData) {
             if (this.areAlignmentsEqual(data.alignment, alignment)) {
                 return data.chunkId;
@@ -22,16 +25,33 @@ export class CaptionManager {
 
     areAlignmentsEqual(alignment1, alignment2) {
         if (!alignment1 || !alignment2) return false;
-        if (alignment1.chars.length !== alignment2.chars.length) return false;
-        for (let i = 0; i < alignment1.chars.length; i++) {
-            if (alignment1.chars[i] !== alignment2.chars[i]) return false;
+        
+        // Check if text content is exactly the same
+        if (alignment1.chars.join('') !== alignment2.chars.join('')) {
+            return false;
         }
+        
+        // Check if arrays have same length
+        if (alignment1.chars.length !== alignment2.chars.length) {
+            return false;
+        }
+        
+        // For real-time streaming, allow some timing variation
+        // Only consider it a duplicate if timing is very similar (within 5ms)
+        const timingTolerance = 5; // 5ms tolerance for real-time streaming
+        
         for (let i = 0; i < alignment1.char_start_times_ms.length; i++) {
-            if (Math.abs(alignment1.char_start_times_ms[i] - alignment2.char_start_times_ms[i]) > 1) return false;
+            if (Math.abs(alignment1.char_start_times_ms[i] - alignment2.char_start_times_ms[i]) > timingTolerance) {
+                return false;
+            }
         }
+        
         for (let i = 0; i < alignment1.char_durations_ms.length; i++) {
-            if (Math.abs(alignment1.char_durations_ms[i] - alignment2.char_durations_ms[i]) > 1) return false;
+            if (Math.abs(alignment1.char_durations_ms[i] - alignment2.char_durations_ms[i]) > timingTolerance) {
+                return false;
+            }
         }
+        
         return true;
     }
 
@@ -100,23 +120,40 @@ export class CaptionManager {
     }
 
     updateCaptions(alignment, audioBase64 = null) {
-        if (!alignment.chars || alignment.chars.length === 0) return;
-        this.log(`Processing caption chunk: "${alignment.chars.join('')}" (${alignment.chars.length} chars)`, 'info');
+        if (!alignment.chars || alignment.chars.length === 0) {
+            this.log('⚠️ Empty alignment data received, skipping caption update', 'warning');
+            return;
+        }
+        
+        this.log(`🔄 Processing caption chunk: "${alignment.chars.join('')}" (${alignment.chars.length} chars)`, 'info');
         if (alignment.chars.length > 20) {
             this.log(`⚠️ Warning: Chunk contains ${alignment.chars.length} characters - this might be the entire text instead of a chunk`, 'warning');
         }
-        const existingChunk = this.findExistingChunkForAlignment(alignment);
+        
+        // Add timestamp to make each chunk unique for real-time streaming
+        const timestamp = Date.now();
+        const uniqueAlignment = {
+            ...alignment,
+            timestamp: timestamp,
+            chunkId: `chunk_${timestamp}_${Math.random().toString(36).substr(2, 9)}`
+        };
+        
+        this.log(`🔍 Checking for duplicate chunks...`, 'debug');
+        const existingChunk = this.findExistingChunkForAlignment(uniqueAlignment);
         if (existingChunk) {
-            this.log(`Chunk already exists for this alignment, skipping duplicate`, 'info');
+            this.log(`⚠️ Chunk already exists for this alignment, skipping duplicate (ID: ${existingChunk})`, 'info');
             return;
         }
+        
+        this.log(`✅ No duplicates found, creating new caption chunk...`, 'debug');
         const isValid = this.validateAlignmentFormat(alignment);
         if (!isValid) {
             this.log('⚠️ Displaying captions despite validation errors', 'warning');
         }
+        
         const captionContainer = document.createElement('div');
         captionContainer.className = 'caption-chunk';
-        const chunkId = `chunk_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const chunkId = uniqueAlignment.chunkId;
         captionContainer.dataset.chunkId = chunkId;
         captionContainer.style.textAlign = 'center';
         captionContainer.style.padding = '15px';
@@ -126,6 +163,7 @@ export class CaptionManager {
         captionContainer.style.border = '1px solid #e0e0e0';
         captionContainer.style.borderRadius = '8px';
         captionContainer.style.backgroundColor = '#fafafa';
+        
         const chunkNumber = this.getNextChunkNumber();
         const header = document.createElement('div');
         header.style.marginBottom = '15px';
@@ -133,9 +171,10 @@ export class CaptionManager {
         header.style.color = '#666';
         header.style.borderBottom = '1px solid #e0e0e0';
         header.style.paddingBottom = '10px';
-        const debugInfo = `[Debug: Text="${alignment.chars.join('')}", Chunk#=${chunkNumber}]`;
+        const debugInfo = `[Debug: Text="${alignment.chars.join('')}", Chunk#=${chunkNumber}, Time=${timestamp}]`;
         header.innerHTML = `<strong>Chunk ${chunkNumber}:</strong> ${alignment.chars.length} characters, ${Math.max(...alignment.char_durations_ms)}ms max duration <small style="color: #999;">${debugInfo}</small>`;
         captionContainer.appendChild(header);
+        
         alignment.chars.forEach((char, index) => {
             const charSpan = document.createElement('span');
             charSpan.className = 'caption-char';
@@ -144,21 +183,25 @@ export class CaptionManager {
             charSpan.dataset.startTime = alignment.char_start_times_ms[index];
             charSpan.dataset.duration = alignment.char_durations_ms[index];
             charSpan.dataset.chunkNumber = chunkNumber;
+            charSpan.dataset.timestamp = timestamp;
             const startTime = alignment.char_start_times_ms[index];
             const duration = alignment.char_durations_ms[index];
-            charSpan.title = `Chunk ${chunkNumber}, Start: ${startTime}ms, Duration: ${duration}ms`;
+            charSpan.title = `Chunk ${chunkNumber}, Start: ${startTime}ms, Duration: ${duration}ms, Time: ${timestamp}`;
             captionContainer.appendChild(charSpan);
         });
+        
         this.captions.appendChild(captionContainer);
         if (!this.alignmentData) this.alignmentData = [];
         this.alignmentData.push({
             chunkId: chunkId,
-            alignment: alignment,
-            audioBase64: audioBase64
+            alignment: uniqueAlignment,
+            audioBase64: audioBase64,
+            timestamp: timestamp
         });
-        this.displayAlignmentData(alignment, chunkNumber, chunkId);
+        
+        this.displayAlignmentData(uniqueAlignment, chunkNumber, chunkId);
         this.updateCaptionSummary();
-        this.log(`✅ Caption chunk ${chunkNumber} added: "${alignment.chars.join('')}" (${alignment.chars.length} characters)`, 'success');
+        this.log(`✅ Caption chunk ${chunkNumber} added successfully: "${alignment.chars.join('')}" (${alignment.chars.length} characters, ID: ${chunkId})`, 'success');
     }
 
     displayAlignmentData(alignment, chunkNumber, chunkId) {
@@ -222,6 +265,33 @@ export class CaptionManager {
                 this.alignmentData = this.alignmentData.filter(data => data.chunkId !== chunkId);
             }
             this.updateCaptionSummary();
+        }
+    }
+    
+    startNewStreamingSession() {
+        // Clear all existing captions when starting a new streaming session
+        this.clearAllCaptions();
+        this.log('🎬 New streaming session started - captions cleared', 'info');
+    }
+    
+    updateCaptionSummary() {
+        if (!this.updateCaptionSummary) return;
+        
+        try {
+            const totalChunks = this.alignmentData ? this.alignmentData.length : 0;
+            const totalCharacters = this.alignmentData ? 
+                this.alignmentData.reduce((sum, data) => sum + (data.alignment.chars ? data.alignment.chars.length : 0), 0) : 0;
+            
+            const summaryElement = document.getElementById('captionSummary');
+            if (summaryElement) {
+                if (totalChunks === 0) {
+                    summaryElement.innerHTML = '<span>No captions yet</span>';
+                } else {
+                    summaryElement.innerHTML = `<span>${totalChunks} chunks, ${totalCharacters} characters</span>`;
+                }
+            }
+        } catch (error) {
+            this.log(`Error updating caption summary: ${error.message}`, 'warning');
         }
     }
 }

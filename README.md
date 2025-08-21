@@ -24,11 +24,50 @@ The server streams audio chunks back via the same WebSocket:
 ### **Character Alignment Format**
 ```json
 {
-  "chars": ["T", "h", "i", "s", " ", "i", "s", " ", "a", "n", " ", "e", "x", "a", "m", "p", "l", "e", ".", " "],
-  "char_start_times_ms": [0, 70, 139, 186, 221, 279, 325, 360, 406, 441, 476, 534, 580, 662, 755, 824, 894, 952, 1010],
-  "char_durations_ms": [70, 69, 46, 35, 58, 45, 34, 46, 34, 34, 58, 45, 82, 92, 68, 70, 57, 58, 46]
+  "chars": ["M", "y", " ", "n", "a", "m", "e", " ", "i", "s", " ", "R", "i", "s", "h", "a", "b", "h"],
+  "char_start_times_ms": [0, 45, 89, 134, 178, 223, 267, 312, 356, 401, 445, 490, 534, 578, 623, 667, 712, 756],
+  "char_durations_ms": [45, 44, 45, 44, 45, 44, 45, 44, 45, 44, 45, 44, 44, 45, 44, 44, 44, 44]
 }
 ```
+
+## 🎵 **Audio Quality & Processing**
+
+### **Raw vs Processed Output Quality**
+
+The system generates audio in two stages, each with different quality characteristics:
+
+#### **1. Raw Model Output**
+- **High Quality**: Direct output from the TTS model (Chatterbox/Kokoro)
+- **Native Format**: Model's optimal audio format and quality
+- **Full Fidelity**: Preserves all model-specific audio characteristics
+- **No Processing Loss**: Maintains original model output quality
+
+#### **2. Processed Output (Forced Alignment)**
+- **Lower Quality**: Audio processed through forced alignment pipeline
+- **Format Conversion**: Converted to 44.1 kHz, 16-bit, mono PCM
+- **Processing Loss**: Quality reduction due to format standardization
+- **Alignment Benefits**: Precise character timing at the cost of audio quality
+
+#### **Quality Trade-offs**
+```
+Raw Model Output          Processed Output
+├── 🎯 High Quality      ├── 🎯 Precise Timing
+├── 🎵 Native Format     ├── 🎵 Standardized Format
+├── 🔒 Full Fidelity     ├── 🔒 Reduced Quality
+└── ⚠️ No Alignment      └── ✅ Character Alignment
+```
+
+#### **Why Processed Output Has Lower Quality**
+1. **Sample Rate Conversion**: Models may use different sample rates (e.g., 24kHz) converted to 44.1kHz
+2. **Bit Depth Reduction**: Models may use 24-bit or 32-bit internally, converted to 16-bit
+3. **Format Standardization**: Conversion to PCM format may introduce quantization artifacts
+4. **Forced Alignment Processing**: MFA processing may modify audio characteristics
+5. **WebSocket Transmission**: Base64 encoding and transmission overhead
+
+#### **Recommendations**
+- **For Audio Quality**: Use raw model output when character alignment isn't critical
+- **For Timing Accuracy**: Use processed output when precise character synchronization is needed
+- **Hybrid Approach**: Consider using both outputs for different use cases
 
 ### **Audio Format**
 - **Sample Rate**: 44.1 kHz (fixed)
@@ -37,39 +76,90 @@ The server streams audio chunks back via the same WebSocket:
 - **Encoding**: PCM
 - **Transmission**: Base64 encoded via WebSocket
 
-## 🚀 Features
+### ✅ High-Fidelity Processing Pipeline (Update)
+The processed output is now engineered to sound virtually identical to the raw model output while still meeting the required 44.1 kHz, 16‑bit PCM format:
+- **Polyphase Resampling**: High-quality Kaiser-windowed polyphase resampling (with fallback to `librosa` kaiser_best).
+- **DC Offset Removal**: Removes bias to prevent headroom loss and low‑freq artifacts.
+- **High‑Pass Filter**: Gentle zero‑phase Butterworth HPF (~40 Hz) to eliminate rumble.
+- **Short Edge Fades**: 5 ms fade‑in/out on each chunk to prevent boundary clicks.
+- **Soft Expander**: Light noise gating between words to reduce inter‑word hiss without harming tails.
+- **Proper Dithering**: 1 LSB TPDF dither applied just before 16‑bit quantization.
+- **WAV Saving Without Forced Float**: Preserves dtype when writing intermediate WAVs to avoid needless conversions.
+- **Frontend PCM Fix**: Correct little‑endian signed 16‑bit decode in the Web Audio path.
 
-- **Bidirectional WebSocket Streaming**: Real-time text input and audio output
-- **Low Latency**: Minimized delay between input and audio generation
-- **Character Alignment**: Precise timing data for each character spoken
-- **Audio Format**: 44.1 kHz, 16-bit, mono PCM audio encoded in Base64
-- **Modern Web Interface**: Beautiful, responsive testing client
-- **Real-time Captions**: Live character highlighting synchronized with audio
-- **Concurrent Processing**: Multiple WebSocket connections supported
-- **Chatterbox TTS Integration**: High-quality text-to-speech using the Chatterbox model
+Result: processed audio is now near‑indistinguishable from the original model output in typical listening, while keeping strict format compliance and alignment support.
 
-## 🎭 Model Switching
+## 🧮 Math Expressions → Speech
+
+### **What is supported**
+- **Inline TeX**: `\( ... \)`
+- **Display TeX**: `\[ ... \]`
+- **Dollar inline**: `$ ... $`
+
+Only the content inside these markers is treated as math. Everything else is spoken as normal text.
+
+### **How it works (pipeline)**
+1. **Detection**: The backend scans text for math segments (`backend/managers.py`).
+2. **Primary path (optional, high‑fidelity)**: If enabled, each TeX segment is sent to a small Node helper (`backend/math_speech.js`) that uses MathJax 3 + Speech Rule Engine (SRE) to convert TeX → MathML → natural language speech.
+   - Styles: `clearspeak` (default) or `mathspeak`.
+   - Timeout‑guarded. If it fails or times out, we fall back transparently.
+3. **Fallback path (fast, dependency‑free)**: A Python converter speaks common TeX constructs via regex rules:
+   - Fractions: `\frac{a}{b}` → “the fraction a over b”
+   - Roots: `\sqrt{x}` / `\sqrt[n]{x}` → “square root of x” / “n‑th root of x”
+   - Exponents: `x^{10}`, `x^2`, `x^3` → “x to the power of 10”, “x squared”, “x cubed”
+   - Sums/products/integrals with limits
+   - Derivatives like `\frac{d}{dx}`
+   - Greek letters and common operators (e.g., `\alpha`, `\beta`, `\times`, `\cdot`)
+   - Braces removed; `=` normalized to “equals”
+4. **Unicode operators & units**: Outside of TeX, we normalize symbols and simple units for clarity:
+   - Operators: ×, ·, −, ±, ≤, ≥, ∑, ∫, ∞, etc. → spoken equivalents
+   - Units: `m^2`/`m^3` → “square meters”/“cubic meters”; `m/s^2` → “meters per second to the power of 2”
+
+### **Configuration**
+Set in `config.py` under `TTS_CONFIG["math_speech"]`:
+```python
+"math_speech": {
+    "enabled": True,          # Turn math→speech preprocessing on/off
+    "use_node_sre": False,    # Use Node MathJax+SRE for high-fidelity speech
+    "style": "clearspeak",   # "clearspeak" | "mathspeak"
+    "timeout_ms": 6000        # Per-segment timeout for the Node helper
+}
+```
+
+### **Enable the Node MathJax+SRE path (optional)**
+This provides the most accurate math speech, especially for complex TeX.
+```bash
+# 1) Ensure Node.js is installed (v16+ recommended)
+# 2) Install helper dependencies
+cd backend
+npm install
+
+# (Optional) Quick test
+node math_speech.js "\\frac{a}{b}" clearspeak
+```
+Then set `use_node_sre: True` in `config.py`.
+
+Dependencies used by the helper (`backend/package.json`): `mathjax-full`, `speech-rule-engine`.
+
+### **Examples**
+- Input: `The equation \\(E = mc^2\\) is famous.`
+  - Spoken: “The equation E equals m c squared is famous.”
+- Input: `Compute \\( \\frac{a+b}{\\sqrt{c}} \\) quickly.`
+  - Spoken: “Compute the fraction a plus b over square root of c quickly.”
+- Input: `Gravity ≈ 9.8 m/s^2.`
+  - Spoken: “Gravity approximately equals 9 point 8 meters per second to the power of 2.”
+
+Notes:
+- If the Node helper is disabled/unavailable or times out, the Python fallback is used automatically.
+- Very complex TeX may be simplified in the fallback path; enable the Node path for best fidelity.
+
+## 🎭 **Model Switching**
 
 The system now supports **two TTS models** with seamless switching:
 
 ### **Available Models**
 - **Chatterbox TTS**: High-quality, real-time TTS with streaming support
 - **Kokoro TTS**: Lightweight, fast TTS with 82M parameters and Apache license
-
-### **Model Switching API**
-```bash
-# Get current model info
-GET /models/current
-
-# Get all available models
-GET /models
-
-# Switch to Kokoro model
-POST /models/switch/kokoro
-
-# Switch to Chatterbox model
-POST /models/switch/chatterbox
-```
 
 ### **Configuration**
 Models can be configured in `config.py`:
@@ -127,35 +217,16 @@ The frontend now includes a user-friendly model selection interface:
 - **🟢 Kokoro Active**: Green indicator for Kokoro model
 - **❓ Unknown**: Gray indicator when status is unclear
 
-### **Testing the UI**
-```bash
-# Test model selection functionality
-python test_model_ui.py
 
-# Test complete system
-python test_model_switching.py
-```
+## 🧹 **Buffer Management**
 
-## 🧹 **Buffer Management & Text Processing**
-
-### **Buffer Clearing Fix**
-The system now properly clears text buffers between requests to prevent text accumulation:
+### **Buffer Clearing**
+The system clears text buffers between requests to prevent text accumulation:
 
 - **Automatic Clearing**: Buffers are cleared after each TTS generation
 - **Manual Clearing**: Use the "🧹 Clear Buffer" button in the UI
 - **API Endpoints**: Programmatic buffer management available
 
-### **Buffer Management API**
-```bash
-# Get buffer content for a connection
-GET /connections/{connection_id}/buffer
-
-# Clear buffer for a connection
-POST /connections/{connection_id}/buffer/clear
-
-# Get all active connections and their buffers
-GET /connections
-```
 
 ### **Text Processing Behavior**
 - **Each Request**: Processes only the new text, not accumulated text
@@ -163,14 +234,74 @@ GET /connections
 - **Clean State**: Fresh buffer for each new TTS request
 - **Proper Streaming**: Text chunks are processed sequentially with delays
 
-### **Testing Buffer Clearing**
-```bash
-# Test buffer functionality
-python test_buffer_clearing.py
+## 🔍 **Forced Alignment & Character Timing**
 
-# Test model switching
-python test_model_switching.py
+### **MFA (Montreal Forced Aligner) Integration**
+The system now uses **Montreal Forced Aligner (MFA)** for precise text-audio alignment:
+
+- **High Accuracy**: Phoneme-level alignment using MFA 3.x
+- **Professional Grade**: Industry-standard forced alignment tool
+- **Fallback Support**: Generic alignment when MFA is unavailable
+- **Real-time Processing**: Integrated into the streaming pipeline
+
+### **Alignment Methods**
+
+#### **1. MFA Forced Alignment (Primary)**
+#### **2. Generic Alignment (Fallback)**
+
+### **Alignment Quality Comparison**
 ```
+MFA Forced Alignment          Generic Alignment
+├── 🎯 Phoneme-level         ├── 🎯 Character-level
+├── 📊 Professional Grade     ├── 📊 Basic Proportional
+├── ⏱️ Precise Timing        ├── ⏱️ Approximate Timing
+├── 🔧 MFA Dependency        ├── 🔧 No Dependencies
+└── ⚡ Slower Processing     └── ⚡ Fast Processing
+```
+
+### **Installation & Setup**
+```bash
+# Install MFA for forced alignment
+cd backend
+./install_forced_aligners.sh
+
+# Or manually install MFA
+pip install montreal-forced-aligner
+mfa download english_us_arpa
+mfa download english_us_arpa english_us_arpa
+```
+
+## 🎵 **Output Section & Audio Display**
+
+### **Generated Output Display**
+The system now shows both raw and processed audio outputs:
+
+#### **Raw Model Output**
+- **File Naming**: `{model}_{timestamp}_raw.wav`
+- **Quality**: High-fidelity, native model format
+- **Use Case**: When audio quality is priority over timing accuracy
+
+#### **Processed Output**
+- **File Naming**: `{model}_{timestamp}_processed.wav`
+- **Quality**: Standardized format (44.1kHz, 16-bit, mono PCM)
+- **Use Case**: When character alignment and timing accuracy are priority
+
+### **Output File Structure**
+```
+generated_audio/
+├── chatterbox_20250820_175448_raw.wav      # Raw model output
+├── chatterbox_20250820_175448_processed.wav # Processed for alignment
+├── kokoro_20250820_175449_raw.wav          # Raw Kokoro output
+└── kokoro_20250820_175449_processed.wav    # Processed Kokoro output
+```
+
+### **Audio Quality Monitoring**
+The system provides real-time feedback on audio generation:
+
+- **Chunk Count**: Number of audio chunks generated
+- **Total Audio**: Cumulative audio data size
+- **Duration**: Current audio playback duration
+- **Status**: Real-time generation status
 
 ## 🏗️ Architecture
 
@@ -180,6 +311,20 @@ python test_model_switching.py
 │   Client        │                 │   FastAPI       │                 │   TTS           │
 │                 │                 │   Server        │                 │                 │
 └─────────────────┘                 └─────────────────┘                 └─────────────────┘
+                                        │
+                                        ▼
+                                ┌─────────────────┐
+                                │   MFA Manager   │
+                                │   Forced        │
+                                │   Alignment     │
+                                └─────────────────┘
+                                        │
+                                        ▼
+                                ┌─────────────────┐
+                                │   Audio        │
+                                │   Processing   │
+                                │   Pipeline     │
+                                └─────────────────┘
 ```
 
 ## 📋 Requirements
@@ -187,6 +332,7 @@ python test_model_switching.py
 - Python 3.11+
 - Modern web browser with WebSocket support
 - Audio playback capabilities
+- Montreal Forced Aligner (optional, for enhanced alignment)
 
 ## 🛠️ Installation
 
@@ -226,6 +372,18 @@ brew install espeak
 
 # Or install via conda
 conda install -c conda-forge espeak
+```
+
+### 5. Install Forced Alignment Tools (Optional)
+```bash
+# Install MFA for enhanced character alignment
+cd backend
+./install_forced_aligners.sh
+
+# Or manually install
+pip install montreal-forced-aligner
+mfa download english_us_arpa
+mfa download english_us_arpa english_us_arpa
 ```
 
 ## 🚀 Usage
@@ -297,13 +455,34 @@ requests.post("http://localhost:8001/models/switch/chatterbox")
 # - GPU acceleration if available
 ```
 
-### 5. Test Chatterbox TTS Integration
+### 6. Test Chatterbox TTS Integration
 ```bash
 # Test the Chatterbox TTS integration
 python test_chatterbox.py
 
 # This will generate a test audio file to verify everything is working
 ```
+
+### ⚡ Real-time Streaming with 20‑Word Sentence‑Aware Queueing
+
+To deliver natural pacing with low latency, the backend maintains a per‑connection text buffer and enqueues chunks using a sentence‑aware 20‑word window:
+- **Tokenization with Spaces Preserved**: We keep trailing whitespace to respect sentence boundaries.
+- **Up to 20 Words per Chunk**: Prefer cutting on punctuation (., !, ?) within the window to avoid mid‑sentence breaks.
+- **Immediate Enqueue**: Chunks are enqueued in an `asyncio.Queue` per connection as text arrives.
+- **Concurrent Processing**: A background task pulls from the queue and generates audio, streaming results in real-time.
+- **Flush Support**: Sending `{"text": "", "flush": true}` forces any remainder to be enqueued immediately.
+
+Configuration:
+- Set the chunk size in `config.py`:
+```python
+TTS_CONFIG = {
+    # ...
+    "chunk_word_count": 20,
+}
+```
+
+Where it happens:
+- The behavior is implemented in `backend/managers.py` inside `WebSocketManager.process_message` (sentence-aware chunking and queueing) and `process_audio_queue` (async consumption and audio generation).
 
 ## 🚀 Running the System
 
@@ -329,6 +508,7 @@ python -m http.server 8080
 2. Enter text in the input area
 3. Click "Stream Text" to start TTS generation
 4. Watch real-time captions and listen to generated audio
+5. Check the generated audio files in `backend/generated_audio/`
 
 ## 🔧 Configuration
 
@@ -352,6 +532,12 @@ python -m http.server 8080
 - **Bit Depth**: 16-bit
 - **Channels**: Mono
 - **Encoding**: PCM → Base64
+
+### Forced Alignment Settings
+- **Primary Method**: Montreal Forced Aligner (MFA)
+- **Fallback Method**: Generic proportional alignment
+- **Alignment Type**: Character-level timing
+- **Processing**: Real-time with audio generation
 
 ## 📡 API Reference
 
@@ -382,6 +568,9 @@ python -m http.server 8080
 - `GET /` - API information
 - `GET /health` - Health check
 - `GET /docs` - Interactive API documentation (Swagger UI)
+- `GET /models/current` - Current TTS model information
+- `POST /models/switch/{model_type}` - Switch TTS models
+- `GET /connections` - Active WebSocket connections
 
 ## 🎯 Usage Examples
 
@@ -447,12 +636,21 @@ ws.onmessage = (event) => {
 3. **Audio Quality**: Check audio clarity and timing
 4. **Caption Sync**: Verify character highlighting matches audio
 5. **Error Handling**: Test with invalid inputs and network issues
+6. **Model Switching**: Test switching between Chatterbox and Kokoro
+7. **Forced Alignment**: Test MFA alignment and fallback methods
 
 ### Performance Testing
 - **Latency**: Measure time from text input to audio output
 - **Throughput**: Test with high-frequency text streaming
 - **Concurrency**: Multiple simultaneous connections
 - **Memory Usage**: Monitor resource consumption
+- **Alignment Accuracy**: Compare MFA vs generic alignment timing
+
+### Audio Quality Testing
+- **Raw Output**: Compare original model audio quality
+- **Processed Output**: Verify alignment accuracy vs quality trade-off
+- **Format Conversion**: Test sample rate and bit depth conversion
+- **File Generation**: Verify raw and processed audio files are created
 
 ## 🐛 Troubleshooting
 
@@ -485,6 +683,18 @@ python -c "import pyttsx3; print('TTS available')"
 - Check system performance
 - Monitor network latency
 
+#### Forced Alignment Issues
+- Verify MFA installation: `mfa --version`
+- Check MFA model downloads: `mfa list`
+- Ensure audio files are valid WAV format
+- Check MFA command-line tools are in PATH
+
+#### Audio Quality Issues
+- Check raw audio files in `generated_audio/` directory
+- Compare raw vs processed audio quality
+- Verify sample rate and bit depth settings
+- Check for audio processing pipeline errors
+
 ### Debug Mode
 Enable detailed logging by modifying the logging level in `backend/main.py`:
 ```python
@@ -500,33 +710,51 @@ logging.basicConfig(level=logging.DEBUG)
 - **Authentication**: Secure WebSocket connections
 - **Metrics Dashboard**: Real-time performance monitoring
 - **Mobile Support**: Responsive design and touch controls
+- **Enhanced Alignment**: Phoneme-level timing and emotion detection
+- **Audio Post-processing**: Noise reduction and enhancement filters
 
 ## 📚 Technical Details
 
 ### Character Alignment Algorithm
-The current implementation uses a simple time-distribution algorithm:
-1. Calculate total audio duration from PCM data
-2. Distribute time evenly among characters
-3. Generate start times and durations for each character
+The system now uses a sophisticated two-tier alignment approach:
 
-For production use, consider implementing:
-- Phoneme-based alignment
-- Machine learning models for timing prediction
-- Integration with speech recognition systems
+#### **Tier 1: MFA Forced Alignment**
+1. **Audio Processing**: Convert audio to MFA-compatible format
+2. **Text Processing**: Prepare text for alignment
+3. **MFA Execution**: Run Montreal Forced Aligner
+4. **Output Parsing**: Extract word-level alignments from TextGrid
+5. **Character Conversion**: Convert word timing to character timing
+
+#### **Tier 2: Generic Fallback Alignment**
+1. **Duration Calculation**: Calculate total audio duration
+2. **Proportional Distribution**: Evenly distribute time across characters
+3. **Timing Generation**: Generate start times and durations
 
 ### Audio Processing Pipeline
-1. **Text Input** → TTS Engine (pyttsx3)
-2. **WAV Generation** → Temporary file creation
-3. **Format Conversion** → 44.1kHz, 16-bit, mono PCM
-4. **Base64 Encoding** → WebSocket transmission
-5. **Client Decoding** → Web Audio API processing
-6. **Real-time Playback** → Synchronized with captions
+1. **Text Input** → TTS Engine (Chatterbox/Kokoro)
+2. **Raw Audio Generation** → Native model format
+3. **Raw File Save** → `{model}_{timestamp}_raw.wav`
+4. **Format Conversion** → 44.1kHz, 16-bit, mono PCM
+5. **Processed File Save** → `{model}_{timestamp}_processed.wav`
+6. **Base64 Encoding** → WebSocket transmission
+7. **Client Decoding** → Web Audio API processing
+8. **Real-time Playback** → Synchronized with captions
 
 ### WebSocket Management
 - **Connection Pooling**: Multiple concurrent connections
 - **Message Buffering**: Efficient text accumulation
 - **Error Handling**: Graceful failure recovery
 - **Resource Cleanup**: Automatic connection management
+- **Buffer Management**: Automatic clearing between requests
+
+### Forced Alignment Architecture
+```
+Audio Input → WAV Conversion → MFA Processing → TextGrid Output → Character Alignment
+     ↓              ↓              ↓              ↓              ↓
+Raw Audio    Temp WAV File   MFA Command    Parse Results   Final Output
+     ↓              ↓              ↓              ↓              ↓
+Save Raw     MFA Corpus      Alignment      Word→Char      WebSocket
+```
 
 ## 🤝 Contributing
 
@@ -546,6 +774,9 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - **FastAPI**: Modern Python web framework
 - **Web Audio API**: Browser audio processing
 - **espeak**: Open-source speech synthesizer
+- **Montreal Forced Aligner**: Professional-grade forced alignment
+- **Chatterbox TTS**: High-quality neural TTS model
+- **Kokoro TTS**: Lightweight, fast TTS engine
 
 ## 📞 Support
 
