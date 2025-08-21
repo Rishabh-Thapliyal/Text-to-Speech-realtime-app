@@ -263,12 +263,9 @@ MFA Forced Alignment          Generic Alignment
 ```bash
 # Install MFA for forced alignment
 cd backend
-./install_forced_aligners.sh
 
 # Or manually install MFA
-pip install montreal-forced-aligner
-mfa download english_us_arpa
-mfa download english_us_arpa english_us_arpa
+sh setup.sh
 ```
 
 ## 🎵 **Output Section & Audio Display**
@@ -356,7 +353,7 @@ source tts-env/bin/activate  # On Windows: tts-env\Scripts\activate
 ### 3. Install Backend Dependencies
 ```bash
 cd backend
-pip install -r requirements.txt
+sh setup.sh
 ```
 
 **Note**: The system supports two TTS engines:
@@ -378,12 +375,13 @@ conda install -c conda-forge espeak
 ```bash
 # Install MFA for enhanced character alignment
 cd backend
-./install_forced_aligners.sh
+sh setup.sh
 
 # Or manually install
-pip install montreal-forced-aligner
-mfa download english_us_arpa
-mfa download english_us_arpa english_us_arpa
+conda config --add channels conda-forge
+conda install montreal-forced-aligner
+mfa model download acoustic english_us_arpa
+mfa model download dictionary english_us_arpa
 ```
 
 ## 🚀 Usage
