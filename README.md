@@ -572,135 +572,6 @@ python -m http.server 8080
 - `POST /models/switch/{model_type}` - Switch TTS models
 - `GET /connections` - Active WebSocket connections
 
-## 🎯 Usage Examples
-
-### Basic Text Streaming
-```javascript
-const ws = new WebSocket('ws://localhost:8000/ws/tts');
-
-// Send initial space character
-ws.send(JSON.stringify({text: " ", flush: false}));
-
-// Stream text in chunks
-ws.send(JSON.stringify({text: "Hello world", flush: false}));
-
-// Force audio generation
-ws.send(JSON.stringify({text: "", flush: true}));
-
-// Close connection
-ws.send(JSON.stringify({text: "", flush: false}));
-```
-
-### Chatterbox Model Integration
-```python
-# In config.py, configure Chatterbox settings
-TTS_CONFIG = {
-    "chatterbox": {
-        "use_local_weights": True,
-        "weights_path": "./chatterbox_weights",
-        "model_type": "realtime_tts",
-        "enable_streaming": True,
-        "chunk_size": 50
-    }
-}
-
-# The system will automatically:
-# 1. Load your local Chatterbox model weights
-# 2. Use RealtimeTTS for high-quality audio generation
-# 3. Fall back to basic TTS if the model is unavailable
-```
-
-### Real-time Caption Display
-```javascript
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  
-  if (data.alignment) {
-    // Display characters with timing
-    data.alignment.chars.forEach((char, index) => {
-      const startTime = data.alignment.char_start_times_ms[index];
-      const duration = data.alignment.char_durations_ms[index];
-      
-      // Create timed caption display
-      setTimeout(() => highlightCharacter(char), startTime);
-    });
-  }
-};
-```
-
-## 🔍 Testing
-
-### Manual Testing
-1. **Connection Test**: Verify WebSocket connection establishment
-2. **Text Streaming**: Test various text lengths and content
-3. **Audio Quality**: Check audio clarity and timing
-4. **Caption Sync**: Verify character highlighting matches audio
-5. **Error Handling**: Test with invalid inputs and network issues
-6. **Model Switching**: Test switching between Chatterbox and Kokoro
-7. **Forced Alignment**: Test MFA alignment and fallback methods
-
-### Performance Testing
-- **Latency**: Measure time from text input to audio output
-- **Throughput**: Test with high-frequency text streaming
-- **Concurrency**: Multiple simultaneous connections
-- **Memory Usage**: Monitor resource consumption
-- **Alignment Accuracy**: Compare MFA vs generic alignment timing
-
-### Audio Quality Testing
-- **Raw Output**: Compare original model audio quality
-- **Processed Output**: Verify alignment accuracy vs quality trade-off
-- **Format Conversion**: Test sample rate and bit depth conversion
-- **File Generation**: Verify raw and processed audio files are created
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-#### TTS Engine Not Working
-```bash
-# Check espeak installation
-espeak --version
-
-# Verify Python TTS library
-python -c "import pyttsx3; print('TTS available')"
-```
-
-#### WebSocket Connection Failed
-- Check if backend server is running
-- Verify WebSocket URL format
-- Check firewall/network settings
-- Ensure CORS is properly configured
-
-#### Audio Not Playing
-- Check browser audio permissions
-- Verify Web Audio API support
-- Check console for JavaScript errors
-- Ensure audio context is initialized
-
-#### High Latency
-- Reduce text chunk size
-- Optimize TTS engine settings
-- Check system performance
-- Monitor network latency
-
-#### Forced Alignment Issues
-- Verify MFA installation: `mfa --version`
-- Check MFA model downloads: `mfa list`
-- Ensure audio files are valid WAV format
-- Check MFA command-line tools are in PATH
-
-#### Audio Quality Issues
-- Check raw audio files in `generated_audio/` directory
-- Compare raw vs processed audio quality
-- Verify sample rate and bit depth settings
-- Check for audio processing pipeline errors
-
-### Debug Mode
-Enable detailed logging by modifying the logging level in `backend/main.py`:
-```python
-logging.basicConfig(level=logging.DEBUG)
-```
-
 ## 🔮 Future Enhancements
 
 - **Advanced TTS Models**: Integration with neural TTS engines
@@ -747,43 +618,30 @@ The system now uses a sophisticated two-tier alignment approach:
 - **Resource Cleanup**: Automatic connection management
 - **Buffer Management**: Automatic clearing between requests
 
-### Forced Alignment Architecture
-```
-Audio Input → WAV Conversion → MFA Processing → TextGrid Output → Character Alignment
-     ↓              ↓              ↓              ↓              ↓
-Raw Audio    Temp WAV File   MFA Command    Parse Results   Final Output
-     ↓              ↓              ↓              ↓              ↓
-Save Raw     MFA Corpus      Alignment      Word→Char      WebSocket
-```
+## 🧑‍💻 Technical Skills Gained
 
-## 🤝 Contributing
+- **Real-time WebSocket development**: Designing bidirectional streaming APIs and clients.
+- **Async Python with asyncio**: Queue-based producers/consumers, backpressure, and task orchestration.
+- **Audio DSP in Python**: Resampling, dithering, DC offset removal, high‑pass filtering, edge fades, and level management.
+- **TTS engine integration**: Wiring up Chatterbox and Kokoro models with standardized output.
+- **Forced alignment tooling**: Installing, invoking, and parsing outputs from Montreal Forced Aligner.
+- **Frontend Web Audio API**: Decoding PCM, buffer queuing, playback control, and UI state updates.
+- **Node.js tooling for math speech**: Using MathJax + Speech Rule Engine via a Node helper.
+- **Configuration and feature flags**: Runtime model switching and optional processing paths.
+- **Diagnostics and troubleshooting**: Structured logging and validation of streaming pipelines.
 
-1. Fork the repository
-2. Create a feature branch
-3. Implement your changes
-4. Add tests and documentation
-5. Submit a pull request
+## 📘 Technical Concepts Covered
 
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- **pyttsx3**: Cross-platform TTS library
-- **FastAPI**: Modern Python web framework
-- **Web Audio API**: Browser audio processing
-- **espeak**: Open-source speech synthesizer
-- **Montreal Forced Aligner**: Professional-grade forced alignment
-- **Chatterbox TTS**: High-quality neural TTS model
-- **Kokoro TTS**: Lightweight, fast TTS engine
-
-## 📞 Support
-
-For questions, issues, or contributions:
-- Create an issue on GitHub
-- Contact the development team
-- Check the documentation and examples
+- **Bidirectional streaming protocol design**: Chunking, flush semantics, and graceful termination.
+- **Sentence‑aware text chunking**: 20‑word windowing with punctuation‑aware boundaries.
+- **Forced alignment theory**: Word/phoneme alignment, TextGrid parsing, and char‑time projection.
+- **PCM audio fundamentals**: Sample rate, bit depth, mono channelization, endianess, and normalization.
+- **Polyphase resampling and windowing**: Quality impacts vs latency trade‑offs.
+- **Dithering and noise shaping basics**: TPDF dither and quantization artifacts.
+- **Math speech generation**: TeX → MathML → speech; ClearSpeak vs MathSpeak styles.
+- **Symbol/units normalization**: Unicode operators and unit phrasing for intelligibility.
+- **Transport considerations**: Base64 payload sizing and WebSocket delivery constraints.
+- **Latency management**: Client buffering, playback scheduling, and concurrency impacts.
 
 ---
 
