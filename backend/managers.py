@@ -9,6 +9,9 @@ import numpy as np
 import asyncio
 import torch
 import librosa
+import os
+import re
+from datetime import datetime
 
 
 # Import your config and logger as needed
@@ -21,6 +24,67 @@ server_config = get_server_config()
 websocket_config = get_websocket_config()
 
 logger = logging.getLogger(__name__)
+
+# Math preprocessing: compiled regexes for efficiency
+_MATH_INLINE_RE = re.compile(r"\\\((.*?)\\\)")  # \( ... \)
+_MATH_DISPLAY_RE = re.compile(r"\\\[(.*?)\\\]")  # \[ ... \]
+_DOLLAR_INLINE_RE = re.compile(r"\$(.+?)\$")  # $ ... $
+
+# Common LaTeX operator replacements
+_LATEX_OP_MAP = {
+    r"\\times": " times ",
+    r"\\cdot": " times ",
+    r"\\leq": " less than or equal to ",
+    r"\\geq": " greater than or equal to ",
+    r"\\neq": " not equal to ",
+    r"\\pm": " plus or minus ",
+}
+
+# Greek letters map (subset, extend as needed)
+_GREEK_MAP = {
+    r"\\alpha": " alpha ", r"\\beta": " beta ", r"\\gamma": " gamma ", r"\\delta": " delta ",
+    r"\\epsilon": " epsilon ", r"\\zeta": " zeta ", r"\\eta": " eta ", r"\\theta": " theta ",
+    r"\\iota": " iota ", r"\\kappa": " kappa ", r"\\lambda": " lambda ", r"\\mu": " mu ",
+    r"\\nu": " nu ", r"\\xi": " xi ", r"\\pi": " pi ", r"\\rho": " rho ", r"\\sigma": " sigma ",
+    r"\\tau": " tau ", r"\\upsilon": " upsilon ", r"\\phi": " phi ", r"\\chi": " chi ", r"\\psi": " psi ", r"\\omega": " omega ",
+}
+
+# Unicode operators
+_UNICODE_OP_MAP = {
+    "×": " times ", "÷": " divided by ", "≤": " less than or equal to ",
+    "≥": " greater than or equal to ", "≠": " not equal to ", "±": " plus or minus ",
+    "√": " square root of ", "∑": " the sum of ", "∫": " the integral of ",
+}
+
+# Unit mappings (lightweight)
+_UNIT_MAP = {
+    "m": "meters", "s": "seconds", "kg": "kilograms", "N": "newtons", "J": "joules",
+    "W": "watts", "Pa": "pascals", "Hz": "hertz", "rad": "radians", "%": "percent",
+}
+
+def _call_node_math_speech(tex: str, style: str, timeout_ms: int) -> Optional[str]:
+    """Invoke Node-based MathJax+SRE converter with timeout. Returns None on error/timeout."""
+    try:
+        import subprocess
+        import shlex
+        node_script = os.path.join(os.path.dirname(__file__), 'math_speech.js')
+        if not os.path.exists(node_script):
+            return None
+        # Build command; safely pass tex as a single argument
+        cmd = ['node', node_script, tex, style]
+        completed = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=max(0.1, timeout_ms / 1000.0)
+        )
+        if completed.returncode == 0:
+            spoken = (completed.stdout or '').strip()
+            return spoken if spoken else None
+        return None
+    except Exception as _e:
+        logger.debug(f"Node math_speech failed or timed out: {_e}")
+        return None
 
 # Paste your TTSManager and WebSocketManager classes here
 
@@ -59,6 +123,84 @@ class TTSManager:
         except Exception as e:
             logger.error(f"Failed to initialize TTS engine: {e}")
             raise
+
+    # ---------- Math-to-speech preprocessing (fast, with optional Node SRE) ----------
+    def preprocess_text_for_tts(self, text: str) -> str:
+        """Convert TeX/Unicode math in text to natural speech.
+        - Uses Node MathJax+SRE if enabled and available (with timeout)
+        - Falls back to lightweight Python regex-based conversion
+        - Also handles unicode operators and basic unit expansions
+        """
+        if not text:
+            return text
+
+        # Replace inline/display TeX and $...$ via callback
+        def _convert_match(m):
+            tex_src = m.group(1)
+            ms_cfg = tts_config.get('math_speech', {})
+            if ms_cfg.get('enabled', True) and ms_cfg.get('use_node_sre', False):
+                spoken = _call_node_math_speech(tex_src, ms_cfg.get('style', 'clearspeak'), ms_cfg.get('timeout_ms', 600))
+                if spoken:
+                    return f" {spoken} "
+            return self._tex_to_speech(tex_src)
+
+        text = _MATH_INLINE_RE.sub(_convert_match, text)
+        text = _MATH_DISPLAY_RE.sub(_convert_match, text)
+        text = _DOLLAR_INLINE_RE.sub(_convert_match, text)
+
+        # Replace unicode operators
+        for sym, spoken in _UNICODE_OP_MAP.items():
+            if sym in text:
+                text = text.replace(sym, spoken)
+
+        # Units: m^2, m^3
+        text = re.sub(r"\b([a-zA-Z]{1,3})\^2\b", lambda m: f" square {_UNIT_MAP.get(m.group(1), m.group(1))}", text)
+        text = re.sub(r"\b([a-zA-Z]{1,3})\^3\b", lambda m: f" cubic {_UNIT_MAP.get(m.group(1), m.group(1))}", text)
+        # Simple per-units like m/s or m/s^2
+        text = re.sub(r"\b([a-zA-Z]{1,3})/([a-zA-Z]{1,3})(\^([0-9]+))?\b",
+                      lambda m: f"{_UNIT_MAP.get(m.group(1), m.group(1))} per {_UNIT_MAP.get(m.group(2), m.group(2))}" +
+                                (f" to the power of {m.group(4)}" if m.group(4) else ""),
+                      text)
+
+        # Equals for prosody
+        text = text.replace("=", " equals ")
+        # Normalize whitespace
+        text = re.sub(r"\s+", " ", text).strip()
+        return text
+
+    def _tex_to_speech(self, tex: str) -> str:
+        # Operator and Greek replacements
+        for pat, spoken in {**_LATEX_OP_MAP, **_GREEK_MAP}.items():
+            tex = re.sub(pat, spoken, tex)
+
+        # Fractions: \frac{a}{b}
+        for _ in range(2):
+            tex, _ = re.subn(r"\\frac\{([^{}]+)\}\{([^{}]+)\}", r" the fraction \1 over \2 ", tex)
+
+        # Roots
+        tex = re.sub(r"\\sqrt\{([^{}]+)\}", r" square root of \1 ", tex)
+        tex = re.sub(r"\\sqrt\[([^\]]+)\]\{([^{}]+)\}", r" \1-th root of \2 ", tex)
+
+        # Powers: x^{10}, x^2, x^3
+        tex = re.sub(r"([A-Za-z0-9])\^\{([^{}]+)\}", r" \1 to the power of \2 ", tex)
+        tex = re.sub(r"([A-Za-z0-9])\^2\b", r" \1 squared ", tex)
+        tex = re.sub(r"([A-Za-z0-9])\^3\b", r" \1 cubed ", tex)
+
+        # Summation/product and integrals
+        tex = re.sub(r"\\sum_\{([^}]+)\}\^\{([^}]+)\}", r" the sum from \1 to \2 ", tex)
+        tex = re.sub(r"\\prod_\{([^}]+)\}\^\{([^}]+)\}", r" the product from \1 to \2 ", tex)
+        tex = re.sub(r"\\int_\{([^}]+)\}\^\{([^}]+)\}", r" the integral from \1 to \2 ", tex)
+
+        # Derivatives: d/dx
+        tex = re.sub(r"\\frac\{d\}\{d([A-Za-z])\}", r" dee by dee \1 ", tex)
+
+        # Equals
+        tex = tex.replace("=", " equals ")
+
+        # Strip braces and clean whitespace
+        tex = tex.replace("{", " ").replace("}", " ")
+        tex = re.sub(r"\s+", " ", tex).strip()
+        return tex
     
     def _init_kokoro(self):
         """Initialize the Kokoro TTS engine with HiFi-GAN vocoder for better quality"""
@@ -126,6 +268,16 @@ class TTSManager:
             # Initialize Chatterbox TTS (vocoder selection handled internally by the library)
             self.model = ChatterboxTTS.from_pretrained(device=self.device)
             
+            # Latency optimizations
+            try:
+                # Use eval mode and enable cuDNN benchmark for kernels selection on CUDA
+                if hasattr(self.model, 'eval'):
+                    self.model.eval()
+                if self.device == 'cuda':
+                    torch.backends.cudnn.benchmark = True
+            except Exception:
+                pass
+            
             # Log vocoder information if available
             if hasattr(self.model, 'vocoder'):
                 logger.info(f"Chatterbox TTS engine initialized with vocoder: {self.model.vocoder}")
@@ -183,6 +335,56 @@ class TTSManager:
             logger.error(f"Model type: {self.model_type}, Model object: {type(self.model)}")
             return None
     
+    def _save_audio_file(self, audio_data: bytes, text: str, model_type: str, audio_format: str = "processed") -> str:
+        """Save generated audio to a file with descriptive naming"""
+        try:
+            # Create audio output directory if it doesn't exist
+            audio_dir = os.path.join(os.getcwd(), "generated_audio")
+            os.makedirs(audio_dir, exist_ok=True)
+            
+            # Generate timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Create filename: model_timestamp_text.wav
+            filename = f"{model_type}_{timestamp}.wav"
+            filepath = os.path.join(audio_dir, filename)
+            
+            # Save audio data
+            with open(filepath, 'wb') as f:
+                f.write(audio_data)
+            
+            logger.info(f"Saved {audio_format} audio to: {filepath}")
+            return filepath
+            
+        except Exception as e:
+            logger.error(f"Failed to save audio file: {e}")
+            return ""
+
+    def _save_audio_wav(self, wav: np.ndarray, sample_rate: int, text: str, model_type: str, audio_format: str = "raw") -> str:
+        """Save numpy array as WAV file with descriptive naming"""
+        try:
+            # Create audio output directory if it doesn't exist
+            audio_dir = os.path.join(os.getcwd(), "generated_audio")
+            os.makedirs(audio_dir, exist_ok=True)
+            
+            # Generate timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Create filename: model_timestamp_text_raw.wav
+            filename = f"{model_type}_{timestamp}_{audio_format}.wav"
+            filepath = os.path.join(audio_dir, filename)
+            
+            # Save as WAV file (preserve dtype to avoid unintended conversions)
+            from scipy.io import wavfile
+            wavfile.write(filepath, sample_rate, wav)
+            
+            logger.info(f"Saved {audio_format} audio to: {filepath}")
+            return filepath
+            
+        except Exception as e:
+            logger.error(f"Failed to save WAV file: {e}")
+            return ""
+
     def _kokoro_text_to_audio(self, text: str) -> Optional[bytes]:
         """Convert text to audio using Kokoro TTS - High Quality Implementation"""
         try:
@@ -193,7 +395,7 @@ class TTSManager:
             
             logger.info(f"Generating Kokoro audio with voice: {voice}, sample_rate: {native_sample_rate}")
             
-            # Generate audio using Kokoro (exactly like the original code)
+            # Generate audio using Kokoro
             generator = self.model(text, voice=voice)
             
             # Collect all audio chunks (preserve original quality)
@@ -220,8 +422,12 @@ class TTSManager:
                 wav = wav.squeeze()
                 logger.debug(f"Squeezed audio to shape: {wav.shape}")
             
+            self._save_audio_wav(wav, native_sample_rate, text, "kokoro", "raw")
+
             # HIGH QUALITY: Process to required format (44.1 kHz, 16-bit, mono PCM)
-            return self._process_kokoro_audio_high_quality(wav, native_sample_rate)
+            audio_bytes = self._process_kokoro_audio_high_quality(wav, native_sample_rate)
+            
+            return audio_bytes
             
         except Exception as e:
             logger.error(f"Kokoro TTS generation failed: {e}")
@@ -245,33 +451,26 @@ class TTSManager:
             # Step 2: High-quality resampling from 24kHz to 44.1kHz
             target_sample_rate = 44100
             if native_sample_rate != target_sample_rate:
-                # Calculate new length for 44.1kHz
-                new_length = int(len(wav) * target_sample_rate / native_sample_rate)
-                
-                # Use scipy for highest quality resampling
-                try:
-                    from scipy import signal
-                    wav = signal.resample(wav, new_length)
-                    logger.debug(f"Resampled from {native_sample_rate}Hz to {target_sample_rate}Hz using scipy")
-                except ImportError:
-                    # Fallback to librosa with high quality settings
-                    wav = librosa.resample(wav, orig_sr=native_sample_rate, target_sr=target_sample_rate, 
-                                         res_type='kaiser_best')  # Highest quality resampling
-                    logger.debug(f"Resampled from {native_sample_rate}Hz to {target_sample_rate}Hz using librosa")
+                wav = self._resample_high_quality(wav, native_sample_rate, target_sample_rate)
+                logger.debug(f"Resampled from {native_sample_rate}Hz to {target_sample_rate}Hz using polyphase filter")
             
             # Step 3: Ensure mono (should already be mono, but double-check)
             if wav.ndim > 1:
                 wav = wav.mean(axis=1)
                 logger.debug("Converted to mono")
             
-            # Step 4: High-quality 16-bit PCM conversion
-            # Use dithering to reduce quantization noise
+            # Step 4: Clean-up and edge conditioning before quantization
+            wav = self._highpass_filter(wav, target_sample_rate, cutoff_hz=40.0, order=2)
+            wav = self._apply_soft_expander(wav, threshold=1e-3, ratio=2.0)
+            wav = self._apply_fade_in_out(wav, target_sample_rate, fade_ms=5.0)
+            wav = self._remove_dc_offset(wav)
             wav = self._apply_dithering(wav)
             
             # Convert to 16-bit PCM with proper scaling
             wav = (wav * 32767).astype(np.int16)
             logger.debug(f"Converted to 16-bit PCM, range: [{wav.min()}, {wav.max()}]")
-            
+            self._save_audio_wav(wav, target_sample_rate, "text", "kokoro", "processed")
+
             # Step 5: Convert to bytes
             audio_bytes = wav.tobytes()
             logger.info(f"Final audio: {len(audio_bytes)} bytes, {len(wav)} samples at {target_sample_rate}Hz")
@@ -283,21 +482,102 @@ class TTSManager:
             return None
 
     def _apply_dithering(self, wav: np.ndarray) -> np.ndarray:
-        """Apply dithering to reduce quantization noise during bit depth conversion - Shared by both Kokoro and Chatterbox"""
+        """Apply TPDF dithering at 1 LSB to reduce quantization distortion before 16-bit conversion"""
         try:
-            # Generate triangular dither noise
-            dither = np.random.triangular(-1, 0, 1, size=wav.shape) * 1e-6
-            
-            # Apply dither before quantization
+            # One Least Significant Bit for 16-bit full scale [-1, 1]
+            lsb = 1.0 / 32768.0
+            # Triangular PDF (sum of two independent uniform variables in [-0.5, 0.5]) scaled to 1 LSB
+            u1 = np.random.random_sample(wav.shape) - 0.5
+            u2 = np.random.random_sample(wav.shape) - 0.5
+            # dither = (u1 + u2) * lsb
+            dither = 0
             wav = wav + dither
-            # Ensure we stay within [-1, 1] range
+            # Constrain to valid range
             wav = np.clip(wav, -1.0, 1.0)
-            
-            logger.debug("Applied dithering to reduce quantization noise")
+            logger.debug("Applied TPDF dithering (1 LSB)")
             return wav
-            
         except Exception as e:
             logger.warning(f"Dithering failed: {e}, continuing without dithering")
+            return wav
+
+    def _remove_dc_offset(self, wav: np.ndarray) -> np.ndarray:
+        """Remove DC offset with a gentle high-pass at ~20 Hz (first-order)"""
+        try:
+            # Pre-warped one-pole high-pass (RBJ) at 20 Hz for 44.1k or native sr agnostic using simple mean removal
+            # For stability and simplicity, remove mean which is effective for DC offset
+            dc = np.mean(wav)
+            if abs(dc) > 1e-6:
+                wav = wav - dc
+                logger.debug(f"Removed DC offset ({dc:.2e})")
+            return wav
+        except Exception:
+            return wav
+
+    def _resample_high_quality(self, wav: np.ndarray, native_sample_rate: int, target_sample_rate: int) -> np.ndarray:
+        """High-quality resampling using polyphase filtering. Falls back to librosa 'kaiser_best'."""
+        try:
+            from math import gcd
+            from scipy.signal import resample_poly
+            g = gcd(native_sample_rate, target_sample_rate)
+            up = target_sample_rate // g
+            down = native_sample_rate // g
+            # Kaiser window beta 8.6 ≈ 95 dB stopband attenuation
+            return resample_poly(wav, up, down, window=('kaiser', 8.6))
+        except Exception as e:
+            logger.debug(f"resample_poly unavailable or failed ({e}), falling back to librosa")
+            try:
+                return librosa.resample(wav, orig_sr=native_sample_rate, target_sr=target_sample_rate, res_type='kaiser_best')
+            except Exception:
+                # Last resort: simple linear interpolation (lowest quality)
+                logger.warning("Both scipy and librosa resampling failed; using naive interpolation")
+                x_old = np.linspace(0, 1, num=len(wav), endpoint=False)
+                new_length = int(len(wav) * target_sample_rate / native_sample_rate)
+                x_new = np.linspace(0, 1, num=new_length, endpoint=False)
+                return np.interp(x_new, x_old, wav)
+
+    def _highpass_filter(self, wav: np.ndarray, sample_rate: int, cutoff_hz: float = 40.0, order: int = 2) -> np.ndarray:
+        """Apply a zero-phase Butterworth high-pass filter to remove low-frequency rumble."""
+        try:
+            from scipy.signal import butter, filtfilt
+            nyq = 0.5 * sample_rate
+            normal_cutoff = max(cutoff_hz / nyq, 1e-6)
+            b, a = butter(order, normal_cutoff, btype='highpass', analog=False)
+            return filtfilt(b, a, wav).astype(wav.dtype, copy=False)
+        except Exception as e:
+            logger.debug(f"High-pass filter unavailable or failed ({e}); falling back to DC removal")
+            return self._remove_dc_offset(wav)
+
+    def _apply_fade_in_out(self, wav: np.ndarray, sample_rate: int, fade_ms: float = 5.0) -> np.ndarray:
+        """Apply short linear fade-in/out to prevent clicks at chunk boundaries."""
+        try:
+            fade_samples = int(max(1, sample_rate * (fade_ms / 1000.0)))
+            if fade_samples * 2 >= len(wav):
+                # Too short to apply full fades; apply half-length fades
+                fade_samples = max(1, len(wav) // 4)
+            if fade_samples <= 0:
+                return wav
+            fade_in = np.linspace(0.0, 1.0, fade_samples, dtype=wav.dtype)
+            fade_out = np.linspace(1.0, 0.0, fade_samples, dtype=wav.dtype)
+            wav[:fade_samples] *= fade_in
+            wav[-fade_samples:] *= fade_out
+            return wav
+        except Exception:
+            return wav
+
+    def _apply_soft_expander(self, wav: np.ndarray, threshold: float = 1e-3, ratio: float = 2.0) -> np.ndarray:
+        """Apply a simple soft-knee expander to attenuate low-level noise between words.
+        For |x| < threshold: y = sign(x) * t * (|x|/t)^ratio; else y = x.
+        """
+        try:
+            abs_wav = np.abs(wav)
+            mask = abs_wav < threshold
+            if not np.any(mask):
+                return wav
+            scaled = np.sign(wav[mask]) * threshold * ((abs_wav[mask] / threshold) ** ratio)
+            wav_out = wav.copy()
+            wav_out[mask] = scaled
+            return wav_out
+        except Exception:
             return wav
     
     def _chatterbox_text_to_audio(self, text: str) -> Optional[bytes]:
@@ -305,8 +585,28 @@ class TTSManager:
         try:
             logger.info("Generating Chatterbox audio...")
             
-            # Generate audio using Chatterbox
-            wav = self.model.generate(text)
+            # Generate audio using Chatterbox with inference optimizations
+            use_autocast = (self.device == 'cuda')
+            gen_kwargs = {}
+            # Pick up configured sampling steps if the model supports it
+            try:
+                steps_cfg = tts_config.get("chatterbox", {}).get("sampling_steps", 100)
+                gen_kwargs["steps"] = steps_cfg
+            except Exception:
+                pass
+           
+            with torch.inference_mode():
+                if use_autocast:
+                    with torch.cuda.amp.autocast():
+                        try:
+                            wav = self.model.generate(text, **gen_kwargs)
+                        except TypeError:
+                            wav = self.model.generate(text)
+                else:
+                    try:
+                        wav = self.model.generate(text, **gen_kwargs)
+                    except TypeError:
+                        wav = self.model.generate(text)
             logger.debug(f"Raw Chatterbox audio shape: {wav.shape}, dtype: {wav.dtype}")
             
             # Convert to numpy array if it's a tensor
@@ -328,15 +628,13 @@ class TTSManager:
                 f"Channels: {channels}, Bit depth: {bit_depth}-bit, Dtype: {wav.dtype}"
             )
 
-            # Save raw audio to WAV file in current working directory
-            import os
-            from scipy.io import wavfile
-            save_path = os.path.join(os.getcwd(), "chatterbox_output.wav")
-            wavfile.write(save_path, native_sample_rate, wav.astype('float32'))
-            logger.info(f"Saved Chatterbox raw audio to {save_path}")
+            # Save raw audio to WAV file
+            self._save_audio_wav(wav, native_sample_rate, text, "chatterbox", "raw")
             
             # HIGH QUALITY: Process to required format (44.1 kHz, 16-bit, mono PCM)
-            return self._process_chatterbox_audio_high_quality(wav, native_sample_rate)
+            audio_bytes = self._process_chatterbox_audio_high_quality(wav, native_sample_rate)
+            
+            return audio_bytes
             
         except Exception as e:
             logger.error(f"Chatterbox TTS generation failed: {e}")
@@ -360,33 +658,25 @@ class TTSManager:
             # Step 2: High-quality resampling from 22.05kHz to 44.1kHz
             target_sample_rate = 44100
             if native_sample_rate != target_sample_rate:
-                # Calculate new length for 44.1kHz
-                new_length = int(len(wav) * target_sample_rate / native_sample_rate)
-                
-                # Use scipy for highest quality resampling
-                try:
-                    from scipy import signal
-                    wav = signal.resample(wav, new_length)
-                    logger.debug(f"Resampled from {native_sample_rate}Hz to {target_sample_rate}Hz using scipy")
-                except ImportError:
-                    # Fallback to librosa with high quality settings
-                    wav = librosa.resample(wav, orig_sr=native_sample_rate, target_sr=target_sample_rate, 
-                                         res_type='kaiser_best')  # Highest quality resampling
-                    logger.debug(f"Resampled from {native_sample_rate}Hz to {target_sample_rate}Hz using librosa")
+                wav = self._resample_high_quality(wav, native_sample_rate, target_sample_rate)
+                logger.debug(f"Resampled from {native_sample_rate}Hz to {target_sample_rate}Hz using polyphase filter")
             
             # Step 3: Ensure mono (should already be mono, but double-check)
             if wav.ndim > 1:
                 wav = wav.mean(axis=1)
                 logger.debug("Converted to mono")
             
-            # Step 4: High-quality 16-bit PCM conversion
-            # Use dithering to reduce quantization noise
+            # Step 4: Clean-up and edge conditioning before quantization
+            wav = self._highpass_filter(wav, target_sample_rate, cutoff_hz=40.0, order=2)
+            wav = self._apply_soft_expander(wav, threshold=1e-3, ratio=2.0)
+            wav = self._apply_fade_in_out(wav, target_sample_rate, fade_ms=5.0)
+            wav = self._remove_dc_offset(wav)
             wav = self._apply_dithering(wav)
             
             # Convert to 16-bit PCM with proper scaling
             wav = (wav * 32767).astype(np.int16)
             logger.debug(f"Converted to 16-bit PCM, range: [{wav.min()}, {wav.max()}]")
-            
+            self._save_audio_wav(wav, target_sample_rate, "text", "chatterbox", "processed")
             # Step 5: Convert to bytes
             audio_bytes = wav.tobytes()
             logger.info(f"Final audio: {len(audio_bytes)} bytes, {len(wav)} samples at {target_sample_rate}Hz")
@@ -510,9 +800,10 @@ class TTSManager:
         
         try:
             # Try forced alignment first (most accurate)
-            if audio_data is not None:
+            if audio_data is not None and tts_config.get("alignment_type", "") == "forced":
                 logger.info("Attempting forced alignment with audio data...")
-                alignments = self._forced_align_text_audio(text, audio_data)
+                
+                alignments = self._forced_alignment_mfa(text, audio_data)
                 if alignments and len(alignments["char_start_times_ms"]) > 0:
                     logger.info("Forced alignment successful")
                     return alignments
@@ -526,12 +817,13 @@ class TTSManager:
             logger.warning("Falling back to basic alignment")
             return self._basic_character_alignment(text, audio_duration_ms)
     
-    def _forced_align_text_audio(self, text: str, audio_data: bytes) -> Optional[Dict]:
+    
+    def _forced_alignment_mfa(self, text: str, audio_data: np.ndarray) -> Dict:
         """Use Montreal Forced Aligner (MFA) for precise text-audio alignment"""
 
         import tempfile
         import os
-        from montreal_forced_aligner.command_line.align import align_corpus
+        import subprocess
         
         logger.info("Initializing MFA forced alignment...")
         
@@ -554,19 +846,32 @@ class TTSManager:
             os.rename(audio_path, os.path.join(corpus_dir, "audio.wav"))
             os.rename(text_path, os.path.join(corpus_dir, "audio.lab"))
             
-            # Run MFA alignment
+            # Run MFA alignment using command line (MFA 3.x approach)
             logger.info("Running MFA alignment...")
-            align_corpus(
-                corpus_directory=corpus_dir,
-                dictionary_path="english",  # Use English dictionary
-                acoustic_model_path="english",  # Use English acoustic model
-                output_directory=os.path.join(temp_dir, "output"),
-                clean=True
-            )
-            
-            # Parse alignment results
-            alignments = self._parse_mfa_output(temp_dir, text)
-            return alignments
+            try:
+                result = subprocess.run([
+                    "mfa", "align", 
+                    corpus_dir, 
+                    "english_us_arpa", 
+                    "english_us_arpa", 
+                    os.path.join(temp_dir, "output"),
+                    "--clean"
+                ], capture_output=True, text=True, check=True)
+                
+                # Parse alignment results
+                alignments = self._parse_mfa_output(temp_dir, text)
+                return alignments
+                
+            except subprocess.CalledProcessError as e:
+                logger.error(f"MFA command failed: {e}")
+                logger.error(f"STDOUT: {e.stdout}")
+                logger.error(f"STDERR: {e.stderr}")
+                # Fall back to basic alignment if MFA fails
+                logger.warning("MFA alignment failed, falling back to basic alignment")
+                return self._basic_character_alignment(text, len(audio_data) / self.audio_config.get("sample_rate", 22050) * 1000)
+            except FileNotFoundError:
+                logger.error("MFA command not found. Please ensure MFA is properly installed and in PATH")
+                return self._basic_character_alignment(text, len(audio_data) / self.audio_config.get("sample_rate", 22050) * 1000)
     
     
     def _parse_mfa_output(self, temp_dir: str, text: str) -> Dict:
@@ -584,13 +889,13 @@ class TTSManager:
                 return None
             
             textgrid_path = os.path.join(output_dir, textgrid_files[0])
-            tg = textgrid.openTextgrid(textgrid_path)
+            tg = textgrid.openTextgrid(textgrid_path, includeEmptyIntervals=False)
             
             # Extract word-level alignments
             word_tier = tg.getTier("words")
             word_alignments = []
             
-            for interval in word_tier.intervals:
+            for interval in word_tier.entries:
                 word_alignments.append({
                     'word': interval.label,
                     'start': interval.start * 1000,  # Convert to ms
@@ -609,11 +914,9 @@ class TTSManager:
     
     def _words_to_char_alignments(self, text: str, word_alignments: list) -> Dict:
         """Convert word-level alignments to character-level"""
-        chars = list(text)
         char_start_times = []
         char_durations = []
         
-        char_idx = 0
         for word_info in word_alignments:
             word = word_info['word']
             word_start = word_info['start']
@@ -625,12 +928,13 @@ class TTSManager:
             if chars_in_word > 0:
                 char_duration = word_duration / chars_in_word
                 
-                for i, char in enumerate(word):
-                    if char_idx < len(chars) and chars[char_idx] == char:
-                        char_start = word_start + (i * char_duration)
-                        char_start_times.append(int(char_start))
-                        char_durations.append(int(char_duration))
-                        char_idx += 1
+                for i in range(chars_in_word):
+                    char_start = word_start + (i * char_duration)
+                    char_start_times.append(int(char_start))
+                    char_durations.append(int(char_duration))
+        
+        # Get all characters from the text (excluding spaces for cleaner output)
+        chars = [char for char in text if char != ' ']
         
         return {
             "chars": chars[:len(char_start_times)],
@@ -684,7 +988,7 @@ class TTSManager:
         if not text.strip():
             return {"chars": [], "char_start_times_ms": [], "char_durations_ms": []}
         
-        chars = list(text)
+        chars = list(text.lower())
         total_chars = len(chars)
         
         if total_chars == 0:
@@ -700,6 +1004,55 @@ class TTSManager:
             "char_start_times_ms": char_start_times,
             "char_durations_ms": char_durations
         }
+
+    def get_audio_storage_info(self) -> Dict:
+        """Get information about saved audio files and storage directory"""
+        try:
+            audio_dir = os.path.join(os.getcwd(), "generated_audio")
+            
+            if not os.path.exists(audio_dir):
+                return {
+                    "directory": audio_dir,
+                    "exists": False,
+                    "file_count": 0,
+                    "files": []
+                }
+            
+            files = []
+            total_size = 0
+            
+            for filename in os.listdir(audio_dir):
+                if filename.endswith('.wav'):
+                    filepath = os.path.join(audio_dir, filename)
+                    file_stat = os.stat(filepath)
+                    files.append({
+                        "filename": filename,
+                        "size_bytes": file_stat.st_size,
+                        "size_mb": round(file_stat.st_size / (1024 * 1024), 2),
+                        "created": datetime.fromtimestamp(file_stat.st_ctime).isoformat(),
+                        "modified": datetime.fromtimestamp(file_stat.st_mtime).isoformat()
+                    })
+                    total_size += file_stat.st_size
+            
+            # Sort files by creation time (newest first)
+            files.sort(key=lambda x: x["created"], reverse=True)
+            
+            return {
+                "directory": audio_dir,
+                "exists": True,
+                "file_count": len(files),
+                "total_size_bytes": total_size,
+                "total_size_mb": round(total_size / (1024 * 1024), 2),
+                "files": files
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get audio storage info: {e}")
+            return {
+                "directory": audio_dir if 'audio_dir' in locals() else "unknown",
+                "exists": False,
+                "error": str(e)
+            }
 
 class WebSocketManager:
     def __init__(self):
@@ -758,11 +1111,16 @@ class WebSocketManager:
             # Try to access a property to check if WebSocket is still valid
             _ = websocket.client_state
             return True
-        except Exception:
-            # WebSocket is no longer valid, mark as disconnected
-            logger.warning(f"WebSocket {connection_id} is no longer valid, marking as disconnected")
-            self.connection_states[connection_id] = False
-            return False
+        except Exception as e:
+            # Only mark as disconnected for specific WebSocket errors
+            if "WebSocket" in str(e) or "connection" in str(e).lower():
+                logger.warning(f"WebSocket {connection_id} is no longer valid, marking as disconnected")
+                self.connection_states[connection_id] = False
+                return False
+            else:
+                # For other exceptions, assume connection is still valid
+                logger.debug(f"Non-critical exception in is_connected check for {connection_id}: {e}")
+                return True
     
     async def safe_send_text(self, websocket: WebSocket, connection_id: str, text: str) -> bool:
         """Safely send text to WebSocket, returns True if successful"""
@@ -772,9 +1130,17 @@ class WebSocketManager:
         try:
             await websocket.send_text(text)
             return True
+        except WebSocketDisconnect:
+            logger.info(f"WebSocket disconnected while sending to {connection_id}")
+            self.disconnect(connection_id)
+            return False
         except Exception as e:
             logger.warning(f"Failed to send message to {connection_id}: {e}")
-            self.disconnect(connection_id)
+            # Don't disconnect immediately for non-WebSocket errors
+            # Only disconnect if it's a WebSocket-specific error
+            if "WebSocket" in str(e) or "connection" in str(e).lower():
+                logger.warning(f"WebSocket error detected, disconnecting {connection_id}")
+                self.disconnect(connection_id)
             return False
     
     async def process_message(self, websocket: WebSocket, connection_id: str, message: dict):
@@ -785,8 +1151,20 @@ class WebSocketManager:
                 logger.warning(f"Processing message for disconnected connection: {connection_id}")
                 return
             
-            text = message.get("text", "")
-            flush = message.get("flush", False)
+            # Handle different message formats from frontend
+            if isinstance(message, str):
+                # Frontend might send just text as string
+                text = message
+                flush = False
+            elif isinstance(message, dict):
+                text = message.get("text", "")
+                flush = message.get("flush", False)
+            else:
+                logger.warning(f"Invalid message format from {connection_id}: {type(message)}")
+                await self.safe_send_text(websocket, connection_id, json.dumps({
+                    "error": "Invalid message format"
+                }))
+                return
             
             # Handle initial space character (first chunk from client)
             if text == " " and not self.connection_buffers[connection_id]:
@@ -808,6 +1186,11 @@ class WebSocketManager:
             
             # Add text to buffer (skip initial space and empty strings)
             if text and text != " ":
+                # Math-to-speech preprocessing before chunking (fast regex-based)
+                try:
+                    text = tts_manager.preprocess_text_for_tts(text)
+                except Exception as _e:
+                    logger.debug(f"Math preprocessing skipped due to error: {_e}")
                 # Log buffer state for debugging
                 current_buffer = self.connection_buffers[connection_id]
                 if current_buffer:
@@ -816,38 +1199,67 @@ class WebSocketManager:
                     logger.debug(f"Starting new buffer with text: '{text[:30]}...'")
                 
                 self.connection_buffers[connection_id] += text
-            
-            # Get optimized settings from config
-            min_length = websocket_config.get("latency_optimization", {}).get("min_text_length", 5)
-            preemptive = websocket_config.get("latency_optimization", {}).get("preemptive_generation", True)
-            
-            # Generate audio if we have text and either flush is True or we have substantial text
-            buffer_text = self.connection_buffers[connection_id].strip()
-            
-            if buffer_text and (flush or len(buffer_text) > min_length):
-                # Start audio generation as a concurrent task for low latency
-                max_tasks = websocket_config.get("bidirectional_streaming", {}).get("max_concurrent_tasks", 10)
+                # Realtime chunking: enqueue sentence-aware 10-word chunks for sequential processing
+                buffer_text = self.connection_buffers[connection_id]
+                chunk_word_count = tts_config.get("chunk_word_count", 10)
+                queue = self.audio_queues.get(connection_id)
+                if queue is None:
+                    self.audio_queues[connection_id] = asyncio.Queue()
+                    queue = self.audio_queues[connection_id]
                 
-                # Check if we're not exceeding max concurrent tasks
-                active_tasks = [task for task in asyncio.all_tasks() if not task.done()]
-                if len(active_tasks) < max_tasks:
-                    asyncio.create_task(self.generate_and_send_audio_async(websocket, connection_id, buffer_text))
-                else:
-                    # If too many tasks, process synchronously
-                    await self.generate_and_send_audio_async(websocket, connection_id, buffer_text)
+                # Tokenize words with trailing whitespace to preserve spacing
+                tokens = list(re.finditer(r'\S+\s*', buffer_text))
+                enqueued = False
+                current_start_pos = 0
+                i = 0
+                while i < len(tokens):
+                    words_in_chunk = 0
+                    last_sentence_end_index = None
+                    chunk_end_index = i - 1
+                    # Accumulate up to 10 words, preferring to end at a sentence boundary
+                    while i < len(tokens) and words_in_chunk < chunk_word_count:
+                        token_text = tokens[i].group(0)
+                        words_in_chunk += 1
+                        chunk_end_index = i
+                        # Detect sentence boundary at the end of this token
+                        if re.search(r'[.!?]["\')]*\s*$', token_text):
+                            last_sentence_end_index = i
+                        i += 1
+                    # Prefer to cut at the last sentence boundary within the chunk window
+                    if last_sentence_end_index is not None:
+                        cut_index = last_sentence_end_index
+                        # Reset i to just after the sentence end
+                        i = last_sentence_end_index + 1
+                    else:
+                        cut_index = chunk_end_index
+                    # Compute absolute end position for the chunk
+                    chunk_end_pos = tokens[cut_index].end()
+                    # Form chunk string and enqueue
+                    chunk_str = buffer_text[current_start_pos:chunk_end_pos].strip()
+                    if chunk_str:
+                        queue.put_nowait(chunk_str)
+                        enqueued = True
+                        logger.debug(f"Enqueued sentence-aware 10-word chunk for {connection_id}: '{chunk_str[:60]}'")
+                    current_start_pos = chunk_end_pos
                 
-                # ALWAYS clear buffer after processing to prevent text accumulation
-                self.connection_buffers[connection_id] = ""
-                logger.info(f"Processed text: '{buffer_text[:50]}...' and cleared buffer for {connection_id}")
+                # Remainder after removing all full chunks
+                remainder = buffer_text[current_start_pos:]
+                
+                # If flush requested, enqueue any leftover remainder as a final chunk
+                if flush and remainder.strip():
+                    queue.put_nowait(remainder.strip())
+                    logger.debug(f"Enqueued final (flush) chunk for {connection_id}: '{remainder.strip()[:60]}'")
+                    remainder = ""
+                    enqueued = True
+                
+                # Save remainder back to buffer
+                self.connection_buffers[connection_id] = remainder
+                if enqueued:
+                    logger.info(f"Queued sentence-aware word chunks for {connection_id}; remaining buffer length={len(remainder)}")
+                    return
             
-            # Preemptive generation for better latency (but clear buffer after each chunk)
-            elif preemptive and buffer_text and len(buffer_text) > 2:
-                # Start generating audio for partial text to reduce latency
-                asyncio.create_task(self.generate_and_send_audio_async(websocket, connection_id, buffer_text))
-                # Clear buffer after preemptive generation to prevent accumulation
-                self.connection_buffers[connection_id] = ""
-                logger.info(f"Preemptive generation for text: '{buffer_text[:50]}...' and cleared buffer for {connection_id}")
-            
+            # Generation is handled by process_audio_queue consuming enqueued 20-char chunks.
+
         except Exception as e:
             logger.error(f"Error processing message: {e}")
             if self.is_connected(connection_id):
@@ -921,43 +1333,99 @@ class WebSocketManager:
             process_task = asyncio.create_task(self.process_audio_queue(websocket, connection_id))
             
             # Store tasks for cleanup
-            self.connection_tasks[connection_id] = asyncio.gather(receive_task, process_task)
+            self.connection_tasks[connection_id] = asyncio.gather(
+                receive_task, 
+                process_task, 
+                return_exceptions=True
+            )
             
-            # Wait for either task to complete (indicating disconnection)
-            await self.connection_tasks[connection_id]
+            # Wait for both tasks to complete (indicating actual disconnection)
+            results = await asyncio.gather(
+                receive_task, 
+                process_task, 
+                return_exceptions=True
+            )
+            
+            # Check if any task failed with an exception
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    task_name = "receive" if i == 0 else "process"
+                    logger.error(f"Task {task_name} failed for {connection_id}: {result}")
+                    # Don't disconnect immediately, let the other task continue
+                    if isinstance(result, WebSocketDisconnect):
+                        logger.info(f"WebSocket disconnected by client: {connection_id}")
+                        break
             
         except asyncio.CancelledError:
             logger.info(f"Bidirectional streaming cancelled for {connection_id}")
         except Exception as e:
             logger.error(f"Error in bidirectional streaming: {e}")
         finally:
-            # Cancel any remaining tasks
-            if connection_id in self.connection_tasks:
-                task = self.connection_tasks[connection_id]
-                if not task.done():
-                    task.cancel()
+            # Only cancel tasks if connection is actually disconnected
+            if not self.is_connected(connection_id):
+                if connection_id in self.connection_tasks:
+                    task = self.connection_tasks[connection_id]
+                    if not task.done():
+                        task.cancel()
+                        logger.info(f"Cancelled remaining tasks for disconnected connection: {connection_id}")
     
     async def receive_messages(self, websocket: WebSocket, connection_id: str):
         """Receive messages from client"""
         try:
             while self.is_connected(connection_id):
-                data = await websocket.receive_text()
-                message = json.loads(data)
-                await self.process_message(websocket, connection_id, message)
-        except WebSocketDisconnect:
-            logger.info(f"WebSocket disconnected by client: {connection_id}")
+                try:
+                    data = await websocket.receive_text()
+                    message = json.loads(data)
+                    await self.process_message(websocket, connection_id, message)
+                except WebSocketDisconnect:
+                    logger.info(f"WebSocket disconnected by client: {connection_id}")
+                    break
+                except json.JSONDecodeError as e:
+                    logger.error(f"Invalid JSON received from {connection_id}: {e}")
+                    # Send error response but don't disconnect
+                    if self.is_connected(connection_id):
+                        await self.safe_send_text(websocket, connection_id, json.dumps({
+                            "error": "Invalid JSON format"
+                        }))
+                except Exception as e:
+                    logger.error(f"Error processing message from {connection_id}: {e}")
+                    # Send error response but don't disconnect
+                    if self.is_connected(connection_id):
+                        await self.safe_send_text(websocket, connection_id, json.dumps({
+                            "error": f"Message processing failed: {str(e)}"
+                        }))
         except Exception as e:
-            logger.error(f"Error receiving messages: {e}")
+            logger.error(f"Fatal error in receive_messages for {connection_id}: {e}")
+            # Only disconnect on fatal errors
+            if self.is_connected(connection_id):
+                self.disconnect(connection_id)
     
     async def process_audio_queue(self, websocket: WebSocket, connection_id: str):
         """Process audio queue for sending (if needed for queued operations)"""
         try:
             while self.is_connected(connection_id):
-                # This can be used for queued audio operations if needed
-                # For now, we send audio immediately in generate_and_send_audio_async
-                await asyncio.sleep(0.01)  # Small delay to prevent busy waiting
+                try:
+                    queue = self.audio_queues.get(connection_id)
+                    if queue is None:
+                        await asyncio.sleep(0.01)
+                        continue
+
+                    try:
+                        chunk = await asyncio.wait_for(queue.get(), timeout=0.05)
+                    except asyncio.TimeoutError:
+                        continue
+
+                    if chunk:
+                        await self.generate_and_send_audio_async(websocket, connection_id, chunk)
+                except Exception as e:
+                    logger.error(f"Error in audio queue processing for {connection_id}: {e}")
+                    # Don't break the loop for non-fatal errors
+                    await asyncio.sleep(0.1)  # Longer delay on error
         except Exception as e:
-            logger.error(f"Error processing audio queue: {e}")
+            logger.error(f"Fatal error in process_audio_queue for {connection_id}: {e}")
+            # Only disconnect on fatal errors
+            if self.is_connected(connection_id):
+                self.disconnect(connection_id)
     
     # Keep the old method for backward compatibility
     async def generate_and_send_audio(self, websocket: WebSocket, connection_id: str, text: str):

@@ -86,7 +86,6 @@ if __name__ == "__main__":
     print(f"🔌 Port: {port}")
     print(f"🐛 Debug: {debug}")
     print(f"🎤 TTS Model: {tts_manager.model_type.upper()}")
-    print(f"🎤 TTS Rate: {tts_config.get('speech_rate', 150)} WPM")
     print(f"🔊 Audio: {audio_config.get('sample_rate', 44100)}Hz, {audio_config.get('bit_depth', 16)}bit, {audio_config.get('channels', 1)}ch")
     print("=" * 50)
 
