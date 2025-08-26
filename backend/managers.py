@@ -1061,6 +1061,9 @@ class WebSocketManager:
         self.connection_states: Dict[str, bool] = {}  # Track connection state
         self.connection_tasks: Dict[str, asyncio.Task] = {}  # Track running tasks
         self.audio_queues: Dict[str, asyncio.Queue] = {}  # Queues for audio chunks
+        # FTTS metric tracking
+        self.first_text_time: Dict[str, float] = {}  # connection_id -> timestamp
+        self.first_audio_time: Dict[str, float] = {}  # connection_id -> timestamp
     
     async def connect(self, websocket: WebSocket, connection_id: str):
         await websocket.accept()
@@ -1068,6 +1071,9 @@ class WebSocketManager:
         self.connection_buffers[connection_id] = ""
         self.connection_states[connection_id] = True
         self.audio_queues[connection_id] = asyncio.Queue()
+        # Reset FTTS metric tracking for this connection
+        self.first_text_time[connection_id] = None
+        self.first_audio_time[connection_id] = None
         logger.info(f"WebSocket connected: {connection_id} with fresh buffer")
     
     def clear_buffer(self, connection_id: str):
@@ -1096,6 +1102,11 @@ class WebSocketManager:
             if not task.done():
                 task.cancel()
             del self.connection_tasks[connection_id]
+        # Clean up FTTS metric tracking
+        if connection_id in self.first_text_time:
+            del self.first_text_time[connection_id]
+        if connection_id in self.first_audio_time:
+            del self.first_audio_time[connection_id]
         logger.info(f"WebSocket disconnected: {connection_id}")
     
     def is_connected(self, connection_id: str) -> bool:
@@ -1186,6 +1197,11 @@ class WebSocketManager:
             
             # Add text to buffer (skip initial space and empty strings)
             if text and text != " ":
+                # FTTS: Record first text chunk time if not already set
+                import time
+                if self.first_text_time.get(connection_id) is None:
+                    self.first_text_time[connection_id] = time.time()
+                    logger.info(f"FTTS: First text chunk received for {connection_id} at {self.first_text_time[connection_id]:.6f}")
                 # Math-to-speech preprocessing before chunking (fast regex-based)
                 try:
                     text = tts_manager.preprocess_text_for_tts(text)
@@ -1197,7 +1213,6 @@ class WebSocketManager:
                     logger.debug(f"Adding text to existing buffer. Current: '{current_buffer[:30]}...', New: '{text[:30]}...'")
                 else:
                     logger.debug(f"Starting new buffer with text: '{text[:30]}...'")
-                
                 self.connection_buffers[connection_id] += text
                 # Realtime chunking: enqueue sentence-aware 10-word chunks for sequential processing
                 buffer_text = self.connection_buffers[connection_id]
@@ -1206,7 +1221,6 @@ class WebSocketManager:
                 if queue is None:
                     self.audio_queues[connection_id] = asyncio.Queue()
                     queue = self.audio_queues[connection_id]
-                
                 # Tokenize words with trailing whitespace to preserve spacing
                 tokens = list(re.finditer(r'\S+\s*', buffer_text))
                 enqueued = False
@@ -1241,17 +1255,14 @@ class WebSocketManager:
                         enqueued = True
                         logger.debug(f"Enqueued sentence-aware 10-word chunk for {connection_id}: '{chunk_str[:60]}'")
                     current_start_pos = chunk_end_pos
-                
                 # Remainder after removing all full chunks
                 remainder = buffer_text[current_start_pos:]
-                
                 # If flush requested, enqueue any leftover remainder as a final chunk
                 if flush and remainder.strip():
                     queue.put_nowait(remainder.strip())
                     logger.debug(f"Enqueued final (flush) chunk for {connection_id}: '{remainder.strip()[:60]}'")
                     remainder = ""
                     enqueued = True
-                
                 # Save remainder back to buffer
                 self.connection_buffers[connection_id] = remainder
                 if enqueued:
@@ -1272,19 +1283,25 @@ class WebSocketManager:
             if not self.is_connected(connection_id):
                 logger.warning(f"Generating audio for disconnected connection: {connection_id}")
                 return
-            
             # Generate audio
             audio_data = tts_manager.text_to_audio(text)
-            
+            import time
             if audio_data:
+                # FTTS: Record first audio chunk time if not already set
+                if self.first_audio_time.get(connection_id) is None:
+                    self.first_audio_time[connection_id] = time.time()
+                    logger.info(f"FTTS: First audio chunk sent for {connection_id} at {self.first_audio_time[connection_id]:.6f}")
+                    # Compute FTTS metric if first text time is available
+                    first_text = self.first_text_time.get(connection_id)
+                    if first_text is not None:
+                        ftts_ms = (self.first_audio_time[connection_id] - first_text) * 1000.0
+                        logger.info(f"FTTS metric for {connection_id}: {ftts_ms:.2f} ms (first text to first audio)")
                 # Convert to Base64
                 audio_base64 = base64.b64encode(audio_data).decode('utf-8')
-                
                 # Calculate audio duration for 44.1 kHz, mono PCM (16-bit or 24-bit)
                 # Formula: duration_ms = (bytes / (sample_rate * channels * bytes_per_sample)) * 1000
                 sample_rate = 44100  # Fixed as per requirements
                 channels = 1         # Fixed as per requirements (mono)
-                
                 # Detect bit depth from audio data size
                 # 16-bit = 2 bytes per sample, 24-bit = 4 bytes per sample (aligned to 32-bit)
                 total_samples = len(audio_data) // channels
@@ -1296,19 +1313,15 @@ class WebSocketManager:
                     # Likely 16-bit audio
                     bytes_per_sample = 2
                     bit_depth = 16
-                
                 sample_count = len(audio_data) // (channels * bytes_per_sample)
                 duration_ms = (sample_count / sample_rate) * 1000
-                
                 # Generate character alignments using forced alignment with audio data
                 alignments = tts_manager.generate_character_alignments(text, duration_ms, audio_data)
-                
                 # Send audio chunk in exact required format
                 response = {
                     "audio": audio_base64,
                     "alignment": alignments
                 }
-                
                 if self.is_connected(connection_id):
                     success = await self.safe_send_text(websocket, connection_id, json.dumps(response))
                     if success:
@@ -1319,7 +1332,6 @@ class WebSocketManager:
                     logger.warning(f"Connection {connection_id} disconnected before audio could be sent")
             else:
                 logger.warning(f"Failed to generate audio for text: '{text}'")
-                
         except Exception as e:
             logger.error(f"Error generating audio: {e}")
             if self.is_connected(connection_id):
